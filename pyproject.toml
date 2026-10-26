@@ -1,7 +1,7 @@
 [project]
 name = "bill-checkup"
 version = "0.1.0"
-description = "Add your description here"
+description = "导入微信/支付宝账单，自动分类，可视化消费"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

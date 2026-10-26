@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# 隐私：真实账单只放在 private/ 里，永远不上传
+/private/
+
+# 密钥：以后放大模型 API Key 的文件，永远不上传
+.streamlit/secrets.toml
+.env
