@@ -12,11 +12,10 @@ from core.classify import coverage
 from core.clean import refunded_amount, cross_month_refunds
 from core.demo import demo_files
 from core.money import YUAN_COLUMN_FORMAT, yuan
-from core.overrides import is_manually_excluded
+from core.overrides import is_local, is_manually_excluded
 from core.schema import COLUMN_LABELS, empty_table
 
-st.title("📥 导入账单")
-st.write("支持微信账单（.xlsx）和支付宝账单（.csv），可以一次选多个文件。")
+st.title("导入账单", icon=":material/upload_file:", anchor=False)
 
 
 def load(files: list[tuple[str, bytes]], use_ai: bool = False):
@@ -26,31 +25,43 @@ def load(files: list[tuple[str, bytes]], use_ai: bool = False):
         st.error(err)
 
 
-# ---------- 上传区 ----------
-uploaded = st.file_uploader(
-    "把账单文件拖到下面的框里，或点 Upload 选择",
-    type=["csv", "xlsx"],
-    accept_multiple_files=True,
-)
-has_key = ai_settings() is not None
-use_ai = st.toggle(
-    "用 AI 补全规则认不出的分类（DeepSeek）",
-    value=has_key,
-    disabled=not has_key,
-    key="use_ai",
-    help="只把规则认不出的支出的「商家名、商品名」发给 DeepSeek，不发时间、金额、支付方式；"
-         "转账、红包已经由规则分到「社交」，不会发出去。",
-)
-if not has_key:
-    st.caption("还没有设置 DeepSeek API Key：把 Key 填进项目里的 `.streamlit/secrets.toml`，再重启网站就能用。")
+# ---------- 上传区（左）+ 怎么导出账单（右） ----------
+upload_col, help_col = st.columns([3, 2], border=True)
+with upload_col:
+    uploaded = st.file_uploader(
+        "微信账单（.xlsx）、支付宝账单（.csv），可以一次拖进多个文件",
+        type=["csv", "xlsx"],
+        accept_multiple_files=True,
+    )
+    has_key = ai_settings() is not None
+    use_ai = st.toggle(
+        "用 AI 补全规则认不出的分类",
+        value=has_key,
+        disabled=not has_key,
+        key="use_ai",
+        help="只把规则认不出的支出的「商家名、商品名」发给 DeepSeek，不发时间、金额、支付方式；"
+             "转账、红包已经由规则分到「社交」，不会发出去。"
+             + ("" if has_key else "　还没有设置 DeepSeek API Key：填进 .streamlit/secrets.toml 后重启网站就能用。"),
+    )
+    with st.container(horizontal=True):
+        if st.button("开始解析", type="primary", icon=":material/play_arrow:", disabled=not uploaded):
+            load([(f.name, f.getvalue()) for f in uploaded], use_ai=use_ai)
+        if st.button("用示例账单试试", icon=":material/science:",
+                     help="虚构大学生「小林」半年的微信 + 支付宝账单，所有交易都是编的"):
+            load(demo_files())
+    if not is_local():
+        st.caption(":material/info: 这是在线演示版：上传的账单只在这次打开的页面里处理，不保存到任何文件，"
+                   "关掉页面就清空。想完全离线使用，可以下载代码在自己电脑上运行。")
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    if st.button("开始解析", type="primary", disabled=not uploaded):
-        load([(f.name, f.getvalue()) for f in uploaded], use_ai=use_ai)
-with col2:
-    if st.button("没有账单？用示例账单试试", help="虚构大学生「小林」半年的微信 + 支付宝账单，所有交易都是编的"):
-        load(demo_files())
+with help_col:
+    st.markdown("**:material/help: 怎么导出账单**")
+    st.markdown(
+        "**支付宝**：我的 → 账单 → 右上角「···」→ 开具交易流水证明 → 选「用于个人对账」，"
+        "填邮箱。邮件里是压缩包，解压密码在支付宝「消息」里。\n\n"
+        "**微信**：我 → 服务 → 钱包 → 账单 → 右上角「···」→ 下载账单 → 选「用于个人对账」，"
+        "填邮箱，解压密码在微信支付的通知里。"
+    )
+    st.caption("一定要选「用于个人对账」：「证明材料」导出的是 PDF，读不了。")
 
 # ---------- 导入报告 ----------
 # 只说「导入时做了什么」；金额统计在「看板」，每一笔在「流水」，这里不重复
@@ -59,7 +70,6 @@ removed = st.session_state.get("removed", pd.DataFrame())
 if df.empty:
     st.stop()
 
-st.divider()
 counts = "、".join(f"{k} {v} 笔" for k, v in df["platform"].value_counts().items())
 st.subheader(f"导入了 {len(df)} 笔交易")
 st.caption(f"{counts}；{df['time'].min():%Y-%m-%d} 至 {df['time'].max():%Y-%m-%d}")

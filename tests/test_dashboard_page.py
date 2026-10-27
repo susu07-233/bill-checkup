@@ -6,7 +6,7 @@ from streamlit.testing.v1 import AppTest
 
 from core.dashboard import kpis
 
-PAGE = str(Path(__file__).parent.parent / "pages" / "3_看板.py")
+PAGE = str(Path(__file__).parent.parent / "app_pages" / "dashboard.py")
 
 
 def page_with_demo_data() -> AppTest:

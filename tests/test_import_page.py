@@ -9,7 +9,7 @@ from core.clean import clean, totals
 from core.demo import demo_files
 from core.parse import parse_bill
 
-PAGE = Path(__file__).parent.parent / "pages" / "1_导入.py"
+PAGE = Path(__file__).parent.parent / "app_pages" / "import_bills.py"
 DEMO = clean(pd.concat([parse_bill(n, b) for n, b in demo_files()], ignore_index=True))[0]
 
 
@@ -18,7 +18,7 @@ def test_ai_toggle_disabled_without_key():
     at.secrets["DEEPSEEK_API_KEY"] = "在这里粘贴"
     at.run()
     assert at.toggle(key="use_ai").disabled
-    assert any("还没有设置 DeepSeek API Key" in c.value for c in at.caption)
+    assert "还没有设置 DeepSeek API Key" in at.toggle(key="use_ai").help   # 鼠标移到开关旁的问号上能看到
 
 
 def test_ai_toggle_enabled_with_key():

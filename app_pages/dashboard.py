@@ -1,6 +1,7 @@
 """看板页：一屏看懂钱花在哪。重点是「必要 / 弹性」（产品决策 Q13）。
 
 颜色：必要 = 蓝、弹性 = 橙、其他 = 灰（dataviz 规范的默认配色，已用校验脚本检查过色盲可分辨）；
+消费日历用红色色阶（只在日历里用，和柱状图的橙色不会同时出现在一张图里）；
 深色模式换成同色系的深色版本。每张图都有鼠标悬停提示。
 """
 
@@ -28,16 +29,16 @@ from core.dashboard import (
 from core.money import yuan
 from core.schema import SPENDING_TYPES
 
-st.set_page_config(page_title="看板 · 账单体检", page_icon="📊", layout="wide")
-st.title("📊 消费看板")
+st.title("消费看板", icon=":material/bar_chart:", anchor=False)
 df = require_data()
 
 
 # ---------- 配色（浅色 / 深色） ----------
 DARK = getattr(st.context.theme, "type", "light") == "dark"
 TYPE_COLORS = {NEED: "#3987e5" if DARK else "#2a78d6", FLEX: "#d95926" if DARK else "#eb6834", OTHER: "#898781"}
-# 消费日历：一个色相（蓝）从浅到深；没花钱的日子用中性灰，不参与色阶
-HEAT = ["#184f95", "#2a78d6", "#6da7ec", "#b7d3f6"] if DARK else ["#cde2fb", "#86b6ef", "#3987e5", "#184f95"]
+# 消费日历（苏宇晨要求用红色，U5）：一个色相（红）从浅到深，已用校验脚本检查：
+# 深浅顺序正确、相邻两档分得清、最浅一档和背景也分得清；没花钱的日子用中性灰，不参与色阶
+HEAT = ["#8a2826", "#c23a37", "#e86a66", "#f5aaa6"] if DARK else ["#f09a95", "#e85d58", "#c22f2c", "#8a1c1b"]
 EMPTY_DAY = "#2c2c2a" if DARK else "#f0efec"
 INK, MUTED, GRID = ("#f0efec", "#898781", "#2c2c2a") if DARK else ("#0b0b0b", "#898781", "#e1e0d9")
 GAP = "#1a1a19" if DARK else "white"          # 相邻色块之间 2px 的缝

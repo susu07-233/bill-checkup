@@ -94,3 +94,11 @@ def test_saved_file_contains_only_ids_and_changes(df, tmp_path):
     save_overrides(ov, path)
     text = path.read_text(encoding="utf-8")
     assert "某同学" not in text and "1525" not in text              # 不存交易内容
+
+
+def test_online_version_does_not_save_to_shared_file(df, tmp_path):
+    """部署到网上时没有 private/ 文件夹：不保存，免得所有访客的修改混在一个文件里。"""
+    path = tmp_path / "private" / "手动修改.json"          # private/ 不存在
+    _, ov = exclude(df, {}, ["big"])
+    save_overrides(ov, path)
+    assert not path.exists() and not path.parent.exists()

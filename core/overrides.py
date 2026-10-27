@@ -34,10 +34,18 @@ def load_overrides(path: Path | None = None) -> dict[str, dict]:
 
 
 def save_overrides(overrides: dict[str, dict], path: Path | None = None) -> None:
+    """保存到文件。只在自己电脑上运行时保存（有 private/ 文件夹）：
+    部署到网上时所有访客共用一台服务器，不能把大家的修改存进同一个文件，这时修改只在当前页面里有效。"""
     path = path or OVERRIDES_FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.parent.exists():
+        return
     clean = {k: v for k, v in overrides.items() if v}   # 空的记录不存
     path.write_text(json.dumps(clean, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def is_local() -> bool:
+    """是不是在自己电脑上运行（有 private/ 文件夹）。部署到网上时没有这个文件夹（它不上传 GitHub）。"""
+    return OVERRIDES_FILE.parent.exists()
 
 
 def apply_overrides(df: pd.DataFrame, overrides: dict[str, dict]) -> pd.DataFrame:

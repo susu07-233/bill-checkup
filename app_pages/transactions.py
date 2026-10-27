@@ -11,7 +11,7 @@ from app_state import change_category, require_data, set_excluded
 from core.clean import totals
 from core.filters import UNCATEGORIZED, filter_transactions, group_key, group_spending, summarize
 from core.money import YUAN_COLUMN_FORMAT, yuan
-from core.overrides import is_manually_excluded
+from core.overrides import is_local, is_manually_excluded
 from core.schema import CATEGORIES, COLUMN_LABELS, DIRECTIONS, PLATFORMS
 
 EDITOR_KEY = "flow_editor"
@@ -21,7 +21,7 @@ ALL = "全部"
 SHOWN_COLUMNS = ["time", "amount", "direction", "counterparty", "item", "category", "category_source",
                  "platform", "pay_method"]
 
-st.title("📋 交易流水")
+st.title("交易流水", icon=":material/receipt_long:", anchor=False)
 df = require_data()
 
 
@@ -182,7 +182,8 @@ st.data_editor(
 )
 excluded_count = is_manually_excluded(df).sum()
 st.caption(
-    "双击「分类」修改；代付、借钱这类勾选「不计入」。改动自动保存。"
+    "双击「分类」修改；代付、借钱这类勾选「不计入」。"
+    + ("改动自动保存。" if is_local() else "在线版的改动只在这次打开的页面里有效。")
     + (f"已标记 **{excluded_count} 笔**不计入。" if excluded_count else "")
 )
 

@@ -64,8 +64,9 @@ uv run python scripts/evaluate.py              # 评测规则 / AI / 规则 + AI
 ```
 
 ```
-app.py            首页
-pages/            导入、流水、看板、报告
+app.py            入口：页面设置 + 导航
+app_pages/        首页、导入、流水、看板、报告
+.streamlit/       主题（浅色 / 深色）和配置
 app_state.py      页面共用的导入、修改操作
 core/             业务逻辑（不含界面，可单独测试）
   parse.py          解析微信 / 支付宝账单

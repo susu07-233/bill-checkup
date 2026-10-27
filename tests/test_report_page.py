@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 import app_state
 from tests.test_ai_report_qa import FakeLLM
 
-PAGE = str(Path(__file__).parent.parent / "pages" / "4_报告.py")
+PAGE = str(Path(__file__).parent.parent / "app_pages" / "report.py")
 REPORT = "**一句话总结**：测试月报。"
 QUERY = json.dumps({"metric": "count", "categories": ["交通"], "understanding": "交通一共几笔"})
 

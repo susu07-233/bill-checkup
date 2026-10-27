@@ -19,7 +19,7 @@ from core.money import YUAN_COLUMN_FORMAT
 from core.qa import METRICS, merchant_candidates, parse_question, pick_merchants, run_query
 from core.schema import COLUMN_LABELS
 
-st.title("📝 AI 报告")
+st.title("AI 报告", icon=":material/auto_awesome:", anchor=False)
 df = require_data()
 ai = app_state.ai_client()
 

@@ -6,7 +6,7 @@ from streamlit.testing.v1 import AppTest
 
 from core.filters import summarize
 
-PAGE = str(Path(__file__).parent.parent / "pages" / "2_流水.py")
+PAGE = str(Path(__file__).parent.parent / "app_pages" / "transactions.py")
 
 
 def page_with_demo_data() -> AppTest:
