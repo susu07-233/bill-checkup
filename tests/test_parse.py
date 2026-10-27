@@ -40,7 +40,7 @@ def test_alipay_directions():
 def test_wechat_reads_all_rows():
     df = parse_wechat(WECHAT)
     assert list(df.columns) == COLUMNS
-    assert len(df) == 7
+    assert len(df) == 8
 
 
 def test_wechat_first_row():

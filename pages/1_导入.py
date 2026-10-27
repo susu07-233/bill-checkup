@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from core.clean import clean, totals
+from core.clean import clean, cross_month_refunds, totals
 from core.parse import parse_bill
 from core.schema import COLUMN_LABELS, empty_table
 
@@ -82,7 +82,11 @@ m4.metric("时间范围", f"{df['time'].min():%m/%d}–{df['time'].max():%m/%d}"
 
 counts = df["platform"].value_counts()
 st.write("　".join(f"**{k}** {v} 笔" for k, v in counts.items()))
-st.caption("「不计收支」的记录（充值、理财、余额宝转入等）会保留在表里，但不算进支出和收入。部分退款已自动扣除。")
+notes = ["「不计收支」的记录（充值、理财、余额宝转入等）保留在表里，但不算进支出和收入", "部分退款已自动扣除"]
+refunds = cross_month_refunds(df)
+if not refunds.empty:
+    notes.append(f"{len(refunds)} 笔跨月退款（原订单不在这份账单里）已抵扣本月支出 ¥{-refunds['amount'].sum():,.2f}")
+st.caption("；".join(notes) + "。")
 
 show_table(df)
 
