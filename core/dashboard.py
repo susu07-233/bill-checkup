@@ -37,10 +37,20 @@ def in_month(df: pd.DataFrame, month: str) -> pd.DataFrame:
     return df[df["time"].dt.strftime("%Y-%m") == month]
 
 
+MIN_DAYS_TO_COMPARE = 20
+
+
 def previous_month(df: pd.DataFrame, month: str) -> str | None:
-    """账单里 month 的上一个月；没有就返回 None。"""
+    """账单里 month 的上一个月，用来做「比上月」。
+
+    上个月的数据不到 20 天（比如账单从 9 月 27 日才开始）就返回 None：
+    拿 4 天和一整个月比，会得出「这个月花钱暴涨」这种误导的结论。
+    """
     earlier = [m for m in months(df) if m < month]
-    return earlier[-1] if earlier else None
+    if not earlier:
+        return None
+    prev = earlier[-1]
+    return prev if kpis(in_month(df, prev))["天数"] >= MIN_DAYS_TO_COMPARE else None
 
 
 def kpis(df: pd.DataFrame) -> dict:

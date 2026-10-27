@@ -34,6 +34,14 @@ def ai_settings() -> dict | None:
     return {"api_key": key, "base_url": base_url, "model": model}
 
 
+def ai_client():
+    """返回 (AI 客户端, 模型名)；没设置 Key 返回 None。"""
+    settings = ai_settings()
+    if settings is None:
+        return None
+    return make_client(settings["api_key"], settings["base_url"]), settings["model"]
+
+
 def require_data() -> pd.DataFrame:
     """页面开头调用：有数据就返回交易表；没有就提示去导入、给一个「用示例账单试试」按钮，并停止这一页。"""
     df = st.session_state.get("transactions")

@@ -99,6 +99,13 @@ def test_previous_month(df):
     assert previous_month(df, "2026-05") is None
 
 
+def test_no_comparison_with_a_partial_month(df):
+    """真实账单从 9 月 27 日开始：拿 9 月的 4 天和 10 月整月比，会误以为 10 月花钱暴涨。"""
+    from core.dashboard import previous_month
+    late_start = df[df["time"] >= "2026-08-25"]                       # 8 月只有 7 天
+    assert previous_month(late_start, "2026-09") is None
+
+
 def test_excluded_and_income_not_counted(df):
     income_only = df[df["direction"] != "支出"]
     assert kpis(income_only)["支出"] == 0

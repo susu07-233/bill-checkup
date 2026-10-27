@@ -85,6 +85,9 @@ with st.container(horizontal=True):
               help="弹性 = 零食饮品、购物、娱乐、社交，是「可以省」的钱；必要 = 餐饮、交通、生活服务、医疗、学习",
               **kw)
 
+if period != "全部" and prev is None and any(m < period for m in all_months):
+    st.caption("上个月的账单不到 20 天，不做「比上月」，免得得出误导的结论。")
+
 if lines := insights(view):
     with st.container(border=True):
         st.markdown("**:material/lightbulb: 小结**\n\n" + "\n".join(f"- {line}" for line in lines))
