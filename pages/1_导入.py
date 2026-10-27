@@ -7,9 +7,9 @@
 import pandas as pd
 import streamlit as st
 
-from core.clean import clean, cross_month_refunds, totals
+from app_state import clear, load_files
+from core.clean import cross_month_refunds, totals
 from core.demo import demo_files
-from core.parse import parse_bill
 from core.schema import COLUMN_LABELS, empty_table
 
 st.title("📥 导入账单")
@@ -17,19 +17,7 @@ st.write("支持微信账单（.xlsx）和支付宝账单（.csv），可以一�
 
 
 def load(files: list[tuple[str, bytes]]):
-    """解析多个文件 → 合并 → 清洗，结果存进 session_state。"""
-    tables, errors = [], []
-    for name, data in files:
-        try:
-            tables.append(parse_bill(name, data))
-        except Exception as e:  # 某个文件解析失败，不影响其他文件
-            errors.append(f"**{name}**：{e}")
-
-    if tables:
-        kept, removed = clean(pd.concat(tables, ignore_index=True))
-        st.session_state["transactions"] = kept.sort_values("time", ascending=False).reset_index(drop=True)
-        st.session_state["removed"] = removed
-    for err in errors:
+    for err in load_files(files):
         st.error(err)
 
 
@@ -94,6 +82,5 @@ if not removed.empty:
         show_table(removed, {"reason": "排除原因"})
 
 if st.button("清空数据"):
-    for key in ("transactions", "removed"):
-        st.session_state.pop(key, None)
+    clear()
     st.rerun()
