@@ -35,7 +35,7 @@ month = None if period == "全部" else period
 view = df if month is None else in_month(df, month)
 facts = report_facts(df, month)
 
-with st.container(border=True):
+with st.container(border=True, key="card_report"):
     st.markdown(f"**:material/description: {'全部时间' if month is None else f'{int(month[5:])} 月'}月报**")
     cache = st.session_state.setdefault("reports", {})
     cache_key = (period, len(view), round(float(view["amount"].sum()), 2))   # 数据变了就重新生成
@@ -53,7 +53,7 @@ with st.container(border=True):
                     st.rerun()
                 except AIError as e:
                     st.error(str(e))
-        st.caption("统计数字由程序计算；「能省多少」是 AI 按这些数字估算的，仅供参考。")
+        st.caption("统计数字由程序计算；「可以试试」是 AI 根据这些数字给的建议，仅供参考。")
 
     with st.expander("发给 AI 的数据"):
         st.caption("只有汇总数字；转账、红包、AA 的对方名字不会发出去。")
@@ -61,5 +61,6 @@ with st.container(border=True):
 
 
 # ---------- 问一问（和看板上的是同一个部件） ----------
-st.subheader("问一问")
-ask_box(df, ai, key="report")
+with st.container(border=True, key="card_ask"):
+    st.markdown("**:material/chat: 问一问**")
+    ask_box(df, ai, key="report")

@@ -27,8 +27,8 @@ def load(files: list[tuple[str, bytes]], use_ai: bool = False):
 
 
 # ---------- 上传区（左）+ 怎么导出账单（右） ----------
-upload_col, help_col = st.columns([3, 2], border=True)
-with upload_col:
+upload_col, help_col = st.columns([3, 2])
+with upload_col, st.container(border=True, height="stretch", key="card_upload"):
     uploaded = st.file_uploader(
         "微信账单（.xlsx）、支付宝账单（.csv），可以一次拖进多个文件",
         type=["csv", "xlsx"],
@@ -54,7 +54,7 @@ with upload_col:
         st.caption(":material/info: 这是在线演示版：上传的账单只在这次打开的页面里处理，不保存到任何文件，"
                    "关掉页面就清空。想完全离线使用，可以下载代码在自己电脑上运行。")
 
-with help_col:
+with help_col, st.container(border=True, height="stretch", key="card_how"):
     st.markdown("**:material/help: 怎么导出账单**")
     st.markdown(
         "**支付宝**：我的 → 账单 → 右上角「···」→ 开具交易流水证明 → 选「用于个人对账」，"
@@ -79,7 +79,7 @@ if "ai_result" in st.session_state:
     level, message = st.session_state["ai_result"]
     getattr(st, level)(message, icon=":material/smart_toy:")
 
-with st.container(border=True):
+with st.container(border=True, key="card_import_summary"):
     st.markdown("**自动处理**")
     spend = df[df["direction"] == "支出"]
     source = spend["category_source"].value_counts()

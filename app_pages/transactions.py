@@ -28,7 +28,7 @@ df = require_data()
 
 
 # ---------- 筛选 ----------
-with st.container(border=True):
+with st.container(border=True, key="card_filters"):
     first_day, last_day = df["time"].min().date(), df["time"].max().date()
     c1, c_day, c2 = st.columns([1, 1.3, 1.7])
     with c1:
@@ -73,12 +73,13 @@ view = filter_transactions(df, start, end, platforms, directions, categories, ke
 # ---------- 汇总 ----------
 t = totals(view)
 food = group_spending(view, "吃喝")
+METRICS = [("筛选出", f"{len(view)} 笔", None), ("支出", yuan(t["支出"]), None),
+           ("其中吃喝", yuan(food["吃喝"]), f"吃喝 = 餐饮 {yuan(food['餐饮'])} + 零食饮品 {yuan(food['零食饮品'])}"),
+           ("收入", yuan(t["收入"]), None)]
 with st.container(horizontal=True):
-    st.metric("筛选出", f"{len(view)} 笔", border=True)
-    st.metric("支出", yuan(t["支出"]), border=True)
-    st.metric("其中吃喝", yuan(food["吃喝"]), border=True,
-              help=f"吃喝 = 餐饮 {yuan(food['餐饮'])} + 零食饮品 {yuan(food['零食饮品'])}")
-    st.metric("收入", yuan(t["收入"]), border=True)
+    for i, (label, value, tip) in enumerate(METRICS):       # 每个数字一张白卡片（styles.py）
+        with st.container(border=True, key=f"card_metric_{i}"):
+            st.metric(label, value, help=tip)
 
 if view.empty:
     if categories:

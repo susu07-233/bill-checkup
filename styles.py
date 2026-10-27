@@ -31,6 +31,12 @@ def inject():
   padding: 1.1rem 1.25rem;
 }}
 
+/* 流水页的数字小卡片：内边距小一点 */
+[class*="st-key-card_metric"] {{ padding: .8rem 1rem; }}
+
+/* 长段文字（AI 月报）：每行不超过约 46 个字，读起来不累 */
+.st-key-card_report p, .st-key-card_report li {{ max-width: 46em; line-height: 1.75; }}
+
 /* 首页：右上角非常淡的绿色柔光 */
 .st-key-home {{
   background: radial-gradient(ellipse 60% 70% at 100% 0%, {c['glow']}, transparent 70%);
