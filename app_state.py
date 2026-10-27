@@ -9,6 +9,8 @@ st.session_state 里的约定：
   ai_result    —— 最近一次 AI 补全的结果说明（给导入页显示）
 """
 
+import os
+
 import pandas as pd
 import streamlit as st
 
@@ -21,17 +23,25 @@ from core.filters import set_category
 from core.parse import parse_bill
 
 
-def ai_settings() -> dict | None:
-    """读取 .streamlit/secrets.toml 里的 DeepSeek 设置；没设置好就返回 None。"""
+def _setting(name: str, default: str = "") -> str:
+    """先找环境变量（魔搭创空间把密钥放在这里），再找 .streamlit/secrets.toml（本地用）。"""
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
     try:
-        key = str(st.secrets.get("DEEPSEEK_API_KEY", "")).strip()
-        base_url = st.secrets.get("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL)
-        model = st.secrets.get("DEEPSEEK_MODEL", DEFAULT_MODEL)
+        return str(st.secrets.get(name, default)).strip()
     except Exception:  # 没有 secrets.toml 文件
-        return None
+        return default
+
+
+def ai_settings() -> dict | None:
+    """读取 DeepSeek 设置；没设置好就返回 None。"""
+    key = _setting("DEEPSEEK_API_KEY")
     if not key.startswith("sk-"):
         return None
-    return {"api_key": key, "base_url": base_url, "model": model}
+    return {"api_key": key,
+            "base_url": _setting("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL) or DEFAULT_BASE_URL,
+            "model": _setting("DEEPSEEK_MODEL", DEFAULT_MODEL) or DEFAULT_MODEL}
 
 
 def ai_client():
