@@ -8,6 +8,7 @@
 import streamlit as st
 
 from app_state import change_category, load_files, set_excluded
+from core.money import YUAN_COLUMN_FORMAT, yuan
 from core.clean import totals
 from core.demo import demo_files
 from core.filters import UNCATEGORIZED, filter_transactions, group_key, summarize
@@ -74,8 +75,8 @@ view = filter_transactions(df, start, end, platforms, directions, categories, ke
 t = totals(view)
 with st.container(horizontal=True):
     st.metric("筛选出", f"{len(view)} 笔", border=True)
-    st.metric("支出", f"¥{t['支出']:,.2f}", border=True)
-    st.metric("收入", f"¥{t['收入']:,.2f}", border=True)
+    st.metric("支出", f"{yuan(t['支出'])}", border=True)
+    st.metric("收入", f"{yuan(t['收入'])}", border=True)
 
 if view.empty:
     if categories:
@@ -99,8 +100,8 @@ if mode in (MODE_MERCHANT, MODE_CATEGORY):
         hide_index=True,
         column_config={
             label: st.column_config.TextColumn(pinned=True),
-            "支出": st.column_config.NumberColumn(format="¥%.2f"),
-            "收入": st.column_config.NumberColumn(format="¥%.2f"),
+            "支出": st.column_config.NumberColumn(format=YUAN_COLUMN_FORMAT),
+            "收入": st.column_config.NumberColumn(format=YUAN_COLUMN_FORMAT),
             "支出占比": st.column_config.ProgressColumn(format="percent", min_value=0, max_value=1),
         },
         alt=f"筛选结果{mode}，每一项的笔数、支出、收入和支出占比",
@@ -112,7 +113,7 @@ if mode in (MODE_MERCHANT, MODE_CATEGORY):
         summary[label].tolist(),       # 和上面的表格顺序一致：花得多的在前
         index=None,
         placeholder=f"选择{label}…",
-        format_func=lambda x: f"{x}　支出 ¥{summary.set_index(label).loc[x, '支出']:,.2f}",
+        format_func=lambda x: f"{x}　支出 {yuan(summary.set_index(label).loc[x, '支出'])}",
         key=f"pick_{by}",
     )
     if picked is not None:
@@ -124,7 +125,7 @@ if mode in (MODE_MERCHANT, MODE_CATEGORY):
             placeholder="—",
             column_config={
                 "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
-                "金额": st.column_config.NumberColumn(format="¥%.2f"),
+                "金额": st.column_config.NumberColumn(format=YUAN_COLUMN_FORMAT),
             },
             alt=f"{picked} 的交易明细",
         )
@@ -173,7 +174,7 @@ st.data_editor(
     disabled=[c for c in table.columns if c not in (CATEGORY_COL, EXCLUDE_COL)],
     column_config={
         "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm", pinned=True),
-        "金额": st.column_config.NumberColumn(format="¥%.2f"),
+        "金额": st.column_config.NumberColumn(format=YUAN_COLUMN_FORMAT),
         EXCLUDE_COL: st.column_config.CheckboxColumn(
             help="勾上后，这笔不算进支出和收入（比如代付、借钱、垫付）。取消勾选就恢复。"),
         CATEGORY_COL: st.column_config.SelectboxColumn(options=CATEGORIES, help="点格子选择分类"),

@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from core import overrides as ov
+from core.money import yuan
 from core.ai_classify import DEFAULT_BASE_URL, DEFAULT_MODEL, AIError, ai_classify, make_client
 from core.classify import classify
 from core.clean import clean
@@ -67,7 +68,7 @@ def fill_with_ai(df: pd.DataFrame, settings: dict | None, client_factory=make_cl
     if stats.asked == 0:
         return out, ("info", "规则已经全部分好了，不需要 AI。")
     return out, ("success", f"AI 补全了 **{stats.classified} 笔**（问了 {stats.asked} 个不同的商家），"
-                            f"约花费 ¥{stats.cost_yuan:.4f}。")
+                            f"约花费 {yuan(stats.cost_yuan, 4)}。")
 
 
 def change_category(ids, category: str | None):

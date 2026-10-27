@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from app_state import ai_settings, clear, load_files
+from core.money import YUAN_COLUMN_FORMAT, yuan
 from core.classify import coverage
 from core.clean import cross_month_refunds, totals
 from core.demo import demo_files
@@ -31,7 +32,7 @@ def show_table(df: pd.DataFrame, extra_columns: dict | None = None):
         hide_index=True,
         width="stretch",
         column_config={
-            "金额": st.column_config.NumberColumn(format="¥%.2f"),
+            "金额": st.column_config.NumberColumn(format=YUAN_COLUMN_FORMAT),
             "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
         },
     )
@@ -76,8 +77,8 @@ st.subheader("解析结果")
 t = totals(df)
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("有效交易", f"{len(df)} 笔")
-m2.metric("支出", f"¥{t['支出']:,.2f}")
-m3.metric("收入", f"¥{t['收入']:,.2f}")
+m2.metric("支出", f"{yuan(t['支出'])}")
+m3.metric("收入", f"{yuan(t['收入'])}")
 m4.metric("时间范围", f"{df['time'].min():%m/%d}–{df['time'].max():%m/%d}")
 
 counts = df["platform"].value_counts()
@@ -97,7 +98,7 @@ else:
 notes = ["「不计收支」的记录（充值、理财、余额宝转入等）保留在表里，但不算进支出和收入", "部分退款已自动扣除"]
 refunds = cross_month_refunds(df)
 if not refunds.empty:
-    notes.append(f"{len(refunds)} 笔跨月退款（原订单不在这份账单里）已抵扣本月支出 ¥{-refunds['amount'].sum():,.2f}")
+    notes.append(f"{len(refunds)} 笔跨月退款（原订单不在这份账单里）已抵扣本月支出 {yuan(-refunds['amount'].sum())}")
 st.caption("；".join(notes) + "。")
 
 show_table(df)

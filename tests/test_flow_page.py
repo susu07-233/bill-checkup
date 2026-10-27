@@ -92,7 +92,7 @@ def test_clicking_a_direction_shows_only_that_direction():
     at.segmented_control[1].set_value("支出").run()
     df = at.session_state["transactions"]
     assert at.metric[0].value == f"{(df['direction'] == '支出').sum()} 笔"
-    assert at.metric[2].value == "¥0.00"                         # 只看支出，收入为 0
+    assert at.metric[2].value == "0.00 元"                       # 只看支出，收入为 0
 
 
 def test_category_filter_disabled_when_nothing_is_categorized():
