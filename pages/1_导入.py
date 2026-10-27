@@ -1,6 +1,7 @@
-"""导入页：上传账单文件 → 解析 → 预览。
+"""导入页：上传账单文件 → 解析 → 清洗 → 预览。
 
-解析好的交易表存在 st.session_state["transactions"] 里，其他页面从这里读取。
+清洗后的交易表存在 st.session_state["transactions"] 里，其他页面从这里读取；
+被排除的记录存在 st.session_state["removed"] 里，方便核对。
 """
 
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from core.clean import clean, totals
 from core.parse import parse_bill
 from core.schema import COLUMN_LABELS, empty_table
 
@@ -18,7 +20,7 @@ st.write("支持微信账单（.xlsx）和支付宝账单（.csv），可以一�
 
 
 def load(files: list[tuple[str, bytes]]):
-    """解析多个文件，合并后存进 session_state。"""
+    """解析多个文件 → 合并 → 清洗，结果存进 session_state。"""
     tables, errors = [], []
     for name, data in files:
         try:
@@ -27,12 +29,24 @@ def load(files: list[tuple[str, bytes]]):
             errors.append(f"**{name}**：{e}")
 
     if tables:
-        merged = pd.concat(tables, ignore_index=True)
-        # 同一份账单导入两次时，靠 id 去重
-        merged = merged.drop_duplicates(subset="id").sort_values("time", ascending=False)
-        st.session_state["transactions"] = merged.reset_index(drop=True)
+        kept, removed = clean(pd.concat(tables, ignore_index=True))
+        st.session_state["transactions"] = kept.sort_values("time", ascending=False).reset_index(drop=True)
+        st.session_state["removed"] = removed
     for err in errors:
         st.error(err)
+
+
+def show_table(df: pd.DataFrame, extra_columns: dict | None = None):
+    """用中文列名显示交易表。"""
+    st.dataframe(
+        df.drop(columns=["category", "category_source"]).rename(columns={**COLUMN_LABELS, **(extra_columns or {})}),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "金额": st.column_config.NumberColumn(format="¥%.2f"),
+            "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
+        },
+    )
 
 
 # ---------- 上传区 ----------
@@ -51,6 +65,7 @@ with col2:
 
 # ---------- 结果预览 ----------
 df = st.session_state.get("transactions", empty_table())
+removed = st.session_state.get("removed", pd.DataFrame())
 if df.empty:
     st.info("还没有导入数据。")
     st.stop()
@@ -58,28 +73,26 @@ if df.empty:
 st.divider()
 st.subheader("解析结果")
 
-spend = df.loc[df["direction"] == "支出", "amount"].sum()
-income = df.loc[df["direction"] == "收入", "amount"].sum()
+t = totals(df)
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("交易笔数", f"{len(df)} 笔")
-m2.metric("支出", f"¥{spend:,.2f}")
-m3.metric("收入", f"¥{income:,.2f}")
+m1.metric("有效交易", f"{len(df)} 笔")
+m2.metric("支出", f"¥{t['支出']:,.2f}")
+m3.metric("收入", f"¥{t['收入']:,.2f}")
 m4.metric("时间范围", f"{df['time'].min():%m/%d}–{df['time'].max():%m/%d}")
-st.caption("⚠️ 目前还包含已退款、已关闭的交易，第 4 步清洗后会更准确。")
 
 counts = df["platform"].value_counts()
 st.write("　".join(f"**{k}** {v} 笔" for k, v in counts.items()))
+st.caption("「不计收支」的记录（充值、理财、余额宝转入等）会保留在表里，但不算进支出和收入。部分退款已自动扣除。")
 
-st.dataframe(
-    df.drop(columns=["category", "category_source"]).rename(columns=COLUMN_LABELS),
-    hide_index=True,
-    width="stretch",
-    column_config={
-        "金额": st.column_config.NumberColumn(format="¥%.2f"),
-        "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
-    },
-)
+show_table(df)
+
+if not removed.empty:
+    reasons = removed["reason"].value_counts()
+    summary = "、".join(f"{k} {v} 笔" for k, v in reasons.items())
+    with st.expander(f"🧹 已自动排除 {len(removed)} 笔：{summary}"):
+        show_table(removed, {"reason": "排除原因"})
 
 if st.button("清空数据"):
-    del st.session_state["transactions"]
+    for key in ("transactions", "removed"):
+        st.session_state.pop(key, None)
     st.rerun()

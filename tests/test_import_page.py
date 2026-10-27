@@ -1,4 +1,4 @@
-"""导入页的测试：点「用示例账单试试」后，应该解析出 11 笔交易。"""
+"""导入页的测试：点「用示例账单试试」后，应该解析、清洗出正确的结果。"""
 
 from pathlib import Path
 
@@ -13,5 +13,9 @@ def test_sample_button_loads_transactions():
     sample_button.click().run()
 
     assert not at.exception
-    assert len(at.session_state["transactions"]) == 11   # 支付宝 6 笔 + 微信 5 笔
-    assert at.metric[0].value == "11 笔"
+    # 模拟账单共 13 笔：保留 10 笔，排除 3 笔（关闭 1、全额退款 1、退款到账 1）
+    assert len(at.session_state["transactions"]) == 10
+    assert len(at.session_state["removed"]) == 3
+    assert at.metric[0].value == "10 笔"
+    assert at.metric[1].value == "¥355.20"
+    assert "已自动排除 3 笔" in at.expander[0].label
