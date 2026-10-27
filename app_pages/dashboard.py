@@ -1,7 +1,7 @@
 """看板页：一屏看懂钱花在哪。重点是「必要 / 弹性」（产品决策 Q13）。
 
 颜色：必要 = 绿、弹性 = 杏橙、其他 = 灰（奶油白 + 鼠尾草绿主题，已用 dataviz 校验脚本检查过色盲可分辨）；
-消费日历用红色色阶（只在日历里用，和柱状图的橙色不会同时出现在一张图里）；
+消费日历用杏橙色阶（颜色越深花得越多）；
 深色模式换成同色系的深色版本。每张图都有鼠标悬停提示。
 """
 
@@ -46,9 +46,9 @@ df = require_data()
 # ---------- 配色（浅色 / 深色） ----------
 DARK = getattr(st.context.theme, "type", "light") == "dark"
 TYPE_COLORS = {NEED: "#3a9c70" if DARK else "#28855c", FLEX: "#d26f30" if DARK else "#e5853f", OTHER: "#8f8c82"}
-# 消费日历（苏宇晨要求用红色，U5）：一个色相（红）从浅到深，已用校验脚本检查：
-# 深浅顺序正确、相邻两档分得清、最浅一档和背景也分得清；没花钱的日子用中性灰，不参与色阶
-HEAT = ["#8a2826", "#c23a37", "#e86a66", "#f5aaa6"] if DARK else ["#f09a95", "#e85d58", "#c22f2c", "#8a1c1b"]
+# 消费日历（U16：从红色换成杏橙色阶，和奶油白 + 鼠尾草绿更搭）：一个色相从浅到深，已用校验脚本检查：
+# 深浅顺序正确、相邻两档分得清、最浅一档和白卡片也分得清；没花钱的日子用中性灰，不参与色阶
+HEAT = ["#8a4a1c", "#b85f22", "#dd8240", "#f3b77e"] if DARK else ["#eba66a", "#de8440", "#bd6128", "#843f13"]
 EMPTY_DAY = "#2a2e2a" if DARK else "#efece4"
 GAP = "#1f231f" if DARK else "white"          # 和卡片底色一样          # 相邻色块之间 2px 的缝
 type_scale = alt.Scale(domain=TYPE_ORDER, range=[TYPE_COLORS[t] for t in TYPE_ORDER])
