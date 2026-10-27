@@ -133,3 +133,34 @@ def test_no_match_and_unsupported(df):
 def test_report_skips_comparison_with_partial_month(df):
     late_start = df[df["time"] >= "2026-08-25"]
     assert "上个月" not in report_facts(late_start, "2026-09")
+
+
+# ---------- 问一问：让 AI 从账单商家里挑（找本地小店） ----------
+
+def test_merchant_candidates_exclude_friends_and_respect_dates(df):
+    from core.qa import merchant_candidates
+    shops = merchant_candidates(df, spec(start="2026-09-01", end="2026-09-30"))
+    friends = set(df.loc[df["category"] == "社交", "counterparty"])
+    assert shops and not any(s.split("｜")[0] in friends for s in shops)
+    assert len(shops) == len(set(shops))                                   # 去重了
+    sept_shops = set(df.loc[df["time"].dt.month == 9, "counterparty"])
+    assert all(s.split("｜")[0] in sept_shops for s in shops)              # 只有这个时间范围里的
+
+
+def test_pick_merchants_finds_shops_keywords_miss(df):
+    from core.qa import merchant_candidates, pick_merchants
+    q = spec(start="2026-09-01", end="2026-09-30", keywords=["奶茶"], understanding="9月奶茶")
+    candidates = merchant_candidates(df, q)
+    wanted = [i for i, s in enumerate(candidates) if s.startswith(("古茗", "蜜雪冰城"))]
+    ai = FakeLLM(json.dumps({"picked": wanted + [9999, "x"]}))            # 非法编号会被忽略
+    q["picked"] = pick_merchants(q, candidates, ai, "m")
+    assert set(q["picked"]) == {candidates[i] for i in wanted}
+    sent = ai.sent[0][1]["content"]
+    assert "金额" not in sent and "2026" not in sent                       # 只发商家名
+
+    _, _, rows = run_query(df, q)
+    by_keyword = (rows["counterparty"] + rows["item"]).str.contains("奶茶")
+    from_pick = rows["counterparty"].isin(["古茗", "蜜雪冰城"])
+    assert {"古茗", "蜜雪冰城"} <= set(rows["counterparty"])               # AI 挑中的店都算进来
+    assert (by_keyword | from_pick).all()                                  # 每一笔要么关键词命中，要么是 AI 挑的店
+    assert (~by_keyword & from_pick).any()                                 # 有关键词搜不到、靠 AI 挑出来的

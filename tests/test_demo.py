@@ -25,7 +25,12 @@ def test_two_files_one_per_platform(files):
 
 
 def test_same_result_every_time(files):
-    assert demo_files() == files              # 固定随机种子，方便测试和演示
+    """固定随机种子，每次生成的内容一样，方便测试和演示。
+    （比较解析后的内容，不比较 xlsx 原始字节：xlsx 里记着保存时间，每秒都不一样。）"""
+    again = demo_files()
+    assert [name for name, _ in again] == [name for name, _ in files]
+    assert again[0][1] == files[0][1]                                   # 支付宝 CSV：逐字节相同
+    pd.testing.assert_frame_equal(parse_bill(*again[1]), parse_bill(*files[1]))   # 微信 xlsx：内容相同
 
 
 def test_parsed_cleanly(cleaned):

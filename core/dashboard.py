@@ -78,13 +78,18 @@ def monthly_by_type(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def daily_by_type(df: pd.DataFrame) -> pd.DataFrame:
-    """每天 必要 / 弹性 / 其他 各花了多少。列：date, type, amount, share（占当天的比例）。"""
+def weekly_by_type(df: pd.DataFrame) -> pd.DataFrame:
+    """每周（周一到周日）必要 / 弹性 / 其他 各花了多少。
+
+    列：week（这周周一）、label（「10/06–10/12」）、type、amount、share（占这一周的比例）。
+    """
     s = spending(df)
-    out = s.groupby(["date", "type"], as_index=False)["amount"].sum()
+    s["week"] = s["date"] - pd.to_timedelta(s["date"].dt.day_of_week, unit="D")
+    out = s.groupby(["week", "type"], as_index=False)["amount"].sum()
     out["amount"] = out["amount"].round(2)
-    day_total = out.groupby("date")["amount"].transform(lambda a: a.clip(lower=0).sum())
-    out["share"] = (out["amount"].clip(lower=0) / day_total).where(day_total > 0, 0.0)
+    week_total = out.groupby("week")["amount"].transform(lambda a: a.clip(lower=0).sum())
+    out["share"] = (out["amount"].clip(lower=0) / week_total).where(week_total > 0, 0.0)
+    out["label"] = out["week"].dt.strftime("%m/%d") + "–" + (out["week"] + pd.Timedelta(days=6)).dt.strftime("%m/%d")
     return out
 
 

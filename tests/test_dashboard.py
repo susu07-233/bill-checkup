@@ -83,14 +83,17 @@ def test_insights_add_what_the_cards_dont_show(df):
     assert "花得最多的一天" in text
 
 
-def test_daily_by_type_adds_up(df):
-    from core.dashboard import daily_by_type
-    d = daily_by_type(df)
-    assert round(d["amount"].sum(), 2) == kpis(df)["支出"]
-    shares = d.groupby("date")["share"].sum()
-    spent = d.groupby("date")["amount"].apply(lambda a: a.clip(lower=0).sum()) > 0
-    assert ((shares[spent] - 1).abs() < 1e-9).all()                   # 有花钱的日子，各部分占比加起来是 100%
-    assert (shares[~spent] == 0).all()                                # 只有退款的日子不算占比
+def test_weekly_by_type_adds_up(df):
+    from core.dashboard import weekly_by_type
+    w = weekly_by_type(df)
+    assert round(w["amount"].sum(), 2) == kpis(df)["支出"]
+    assert (w["week"].dt.day_of_week == 0).all()                      # 每周从周一开始
+    assert w["week"].nunique() == 27                                  # 5/1（周五）到 10/26（周一）跨 27 周
+    assert w.loc[w["week"] == "2026-09-28", "label"].iloc[0] == "09/28–10/04"
+    shares = w.groupby("week")["share"].sum()
+    spent = w.groupby("week")["amount"].apply(lambda a: a.clip(lower=0).sum()) > 0
+    assert ((shares[spent] - 1).abs() < 1e-9).all()                   # 有花钱的周，各部分占比加起来是 100%
+    assert (shares[~spent] == 0).all()                                # 退款比花的还多的周（5/1 那周）不算占比
 
 
 def test_previous_month(df):

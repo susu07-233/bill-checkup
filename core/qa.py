@@ -93,8 +93,47 @@ def validate(spec: dict) -> dict:
     }
 
 
+PRIVATE_CATEGORIES = {"社交"}     # 转账、红包、AA：商家名其实是人名，不发给 AI
+MAX_CANDIDATES = 300
+
+
+def _shop(counterparty, item) -> str:
+    """「商家｜商品」：外卖订单的店名常常写在商品里（比如「饿了么｜爷爷不泡茶…外卖订单」）。"""
+    item = str(item or "").strip()
+    return f"{counterparty}｜{item[:30]}" if item and item != "/" else str(counterparty)
+
+
+def merchant_candidates(df: pd.DataFrame, spec: dict) -> list[str]:
+    """在查询的时间范围内，账单里出现过的商家（不含社交），去重后最多 300 个。"""
+    rows = select(df, {**spec, "keywords": [], "picked": []})   # 只按时间、收支、分类筛
+    rows = rows[~rows["category"].isin(PRIVATE_CATEGORIES)]
+    shops = [_shop(c, i) for c, i in zip(rows["counterparty"], rows["item"])]
+    return list(dict.fromkeys(shops))[:MAX_CANDIDATES]
+
+
+def pick_merchants(spec: dict, candidates: list[str], client, model: str) -> list[str]:
+    """请 AI 从账单里的商家中挑出和问题有关的（解决「本地小店 AI 不认识」的问题）。只发商家名。"""
+    if not candidates:
+        return []
+    prompt = (f"下面是一位用户账单里出现过的商家（格式「商家｜商品」，带编号）。"
+              f"请挑出和「{spec['understanding']}」有关的商家，宁缺毋滥，不确定的不要选。"
+              '只输出 JSON：{"picked": [编号, ...]}')
+    listing = "\n".join(f"{i}. {s}" for i, s in enumerate(candidates))
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": listing}],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        picked = json.loads(response.choices[0].message.content).get("picked", [])
+    except Exception as e:
+        raise AIError(f"调用 AI 失败：{e}") from e
+    return [candidates[i] for i in picked if isinstance(i, int) and 0 <= i < len(candidates)]
+
+
 def select(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
-    """按查询条件挑出交易。"""
+    """按查询条件挑出交易。关键词命中的、或者 AI 从商家列表里挑中的（spec["picked"]），都算。"""
     rows = df[df["direction"] == spec["direction"]]
     day = rows["time"].dt.date
     if spec["start"]:
@@ -104,11 +143,15 @@ def select(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
         rows = rows[day <= spec["end"]]
     if spec["categories"]:
         rows = rows[rows["category"].isin(spec["categories"])]
-    if spec["keywords"]:
+    picked = set(spec.get("picked") or [])
+    if spec["keywords"] or picked:
         text = (rows["counterparty"].astype(str) + " " + rows["item"].astype(str)).str.lower()
         hit = pd.Series(False, index=rows.index)
         for word in spec["keywords"]:
             hit |= text.str.contains(word.lower(), regex=False)
+        if picked:
+            shops = pd.Series([_shop(c, i) for c, i in zip(rows["counterparty"], rows["item"])], index=rows.index)
+            hit |= shops.isin(picked)
         rows = rows[hit]
     return rows.sort_values("time", ascending=False)
 

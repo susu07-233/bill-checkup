@@ -32,13 +32,13 @@ def test_dashboard_renders_with_demo_data():
     k = kpis(at.session_state["transactions"])
     assert metric(at, "总支出") == f"{k['支出']:,.2f} 元"
     assert metric(at, "弹性支出占比") == f"{k['弹性占比']:.0%}"
-    assert len(at.get("vega_lite_chart")) == 6                       # 必要/弹性、每月、每日、分类、商家、日历
+    assert len(at.get("vega_lite_chart")) == 6                       # 必要/弹性、每月、每周、分类、商家、日历
     assert any("花得最多的一天" in m.value for m in at.markdown)
 
 
-def test_daily_chart_share_mode():
+def test_weekly_chart_share_mode():
     at = page_with_demo_data()
-    at.segmented_control(key="daily_mode").set_value("占比").run()
+    at.segmented_control(key="weekly_mode").set_value("占比").run()
     assert not at.exception
 
 

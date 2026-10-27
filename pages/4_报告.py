@@ -1,7 +1,8 @@
 """报告页：AI 月报 + 问一问。
 
 分工：数字全部由程序算，AI 只负责写文字（月报）和理解问题（问一问），所以答案里的数字不会算错。
-隐私：月报只发汇总数字（不发转账、红包对方的名字）；问一问只发你的问题，不发任何交易。
+隐私：月报只发汇总数字（不发转账、红包对方的名字）；问一问发你的问题，
+      另外可以选择让 AI 从账单的商家名里挑（只发商家名，不发金额、时间，不发转账对象）。
 """
 
 import json
@@ -15,7 +16,7 @@ from core.ai_classify import AIError
 from core.ai_report import generate_report, report_facts
 from core.dashboard import in_month, insights, months
 from core.money import YUAN_COLUMN_FORMAT
-from core.qa import METRICS, parse_question, run_query
+from core.qa import METRICS, merchant_candidates, parse_question, pick_merchants, run_query
 from core.schema import COLUMN_LABELS
 
 st.title("📝 AI 报告")
@@ -69,9 +70,27 @@ if ai is None:
     st.caption("设置好 API Key 后，可以直接问：" + "、".join(f"「{q}」" for q in EXAMPLES))
     st.stop()
 
+allow_names = st.toggle(
+    "让 AI 从我账单里的商家中挑（找得到本地小店）", value=True, key="qa_allow_names",
+    help="问到具体东西（比如奶茶）时，把这段时间账单里出现过的商家名发给 AI，让它挑出相关的店。"
+         "只发商家名和商品名，不发金额和时间；转账、红包、AA 的对方名字不发。关掉就只按常见品牌名搜索。")
 picked = st.pills("试试这些", EXAMPLES, key="qa_example", label_visibility="collapsed")
 typed = st.chat_input("问问你的账单，比如：9 月打车花了多少？")
 question = typed or picked
+
+
+def understand(question: str) -> dict:
+    """理解问题（同一个问题只问一次 AI，刷新页面不重复花钱）。"""
+    cache = st.session_state.setdefault("qa_cache", {})
+    key = (question, allow_names, len(df))
+    if key not in cache:
+        spec = parse_question(question, *ai, today=date.today(),
+                              data_start=df["time"].min().date(), data_end=df["time"].max().date())
+        if allow_names and spec.get("keywords"):
+            spec["picked"] = pick_merchants(spec, merchant_candidates(df, spec), *ai)
+        cache[key] = spec
+    return cache[key]
+
 
 if question:
     with st.chat_message("user"):
@@ -79,8 +98,7 @@ if question:
     with st.chat_message("assistant"):
         try:
             with st.spinner("理解问题…"):
-                spec = parse_question(question, *ai, today=date.today(),
-                                      data_start=df["time"].min().date(), data_end=df["time"].max().date())
+                spec = understand(question)
         except AIError as e:
             st.error(str(e))
             st.stop()
@@ -89,7 +107,10 @@ if question:
         st.markdown(answer)
         if not spec.get("unsupported"):
             how = [spec["understanding"] or METRICS[spec["metric"]]]
-            if spec["keywords"]:
+            if spec.get("picked"):
+                how.append("AI 从你的账单里挑出的店：" + "、".join(s.split("｜")[-1][:12] for s in spec["picked"][:8])
+                           + ("……" if len(spec["picked"]) > 8 else ""))
+            elif spec["keywords"]:
                 how.append("搜索的关键词：" + "、".join(spec["keywords"]))   # 漏了哪家店，一眼能看出来
             st.caption("我理解的问题：" + "　".join(how))
         if table is not None:

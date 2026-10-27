@@ -16,7 +16,6 @@ from core.dashboard import (
     TYPE_ORDER,
     by_category,
     daily,
-    daily_by_type,
     in_month,
     insights,
     kpis,
@@ -24,6 +23,7 @@ from core.dashboard import (
     months,
     previous_month,
     top_merchants,
+    weekly_by_type,
 )
 from core.money import yuan
 from core.schema import SPENDING_TYPES
@@ -100,8 +100,10 @@ with left, st.container(border=True, height="stretch"):
     shares = pd.DataFrame({"type": TYPE_ORDER, "amount": [max(k[t], 0) for t in TYPE_ORDER]})
     shares = shares[shares["amount"] > 0]
     shares["share"] = shares["amount"] / shares["amount"].sum()
-    # 色块太窄放不下文字时不写字（窗口变窄时「其他 12%」会被挤出去），具体比例看下面的文字和悬停提示
-    shares["label"] = shares.apply(lambda r: f"{r['type']} {r['share']:.0%}" if r["share"] >= 0.22 else "", axis=1)
+    # 色块宽：写「必要 44%」；色块窄：只写「12%」（类型看颜色和下面的文字）；太窄（< 8%）才不写
+    shares["label"] = shares.apply(
+        lambda r: f"{r['type']} {r['share']:.0%}" if r["share"] >= 0.22
+        else f"{r['share']:.0%}" if r["share"] >= 0.08 else "", axis=1)
     shares["tip"] = shares["amount"].map(yuan)
     base = alt.Chart(shares).encode(
         x=alt.X("amount:Q", stack="normalize", axis=None), order=type_order,
@@ -141,27 +143,28 @@ with right, st.container(border=True, height="stretch"):
     st.altair_chart(style(chart), width="stretch", alt="每月支出，按必要、弹性、其他分段")
 
 
-# ---------- 每日支出（苏宇晨的需求：看每天的花费和占比） ----------
+# ---------- 每周支出（苏宇晨的需求：按周看花费和占比；按天太碎，每天的情况看下面的日历） ----------
 with st.container(border=True):
     head, switch = st.columns([3, 2], vertical_alignment="center")
-    head.markdown("**每日支出**")
+    head.markdown("**每周支出**")
     show = switch.segmented_control("显示", ["金额", "占比"], default="金额", required=True,
-                                    key="daily_mode", label_visibility="collapsed", width="content")
-    days = daily_by_type(view)
-    days["tip"] = days["amount"].map(yuan)
+                                    key="weekly_mode", label_visibility="collapsed", width="content")
+    weeks = weekly_by_type(view)
+    weeks["tip"] = weeks["amount"].map(yuan)
     as_share = show == "占比"
-    chart = alt.Chart(days).mark_bar(stroke=GAP, strokeWidth=1 if len(days) > 120 else 2).encode(
-        x=alt.X("yearmonthdate(date):T", title=None, axis=alt.Axis(format="%m/%d", labelAngle=0, grid=False)),
+    order = list(dict.fromkeys(weeks.sort_values("week")["label"]))
+    chart = alt.Chart(weeks).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3, stroke=GAP, strokeWidth=2).encode(
+        x=alt.X("label:N", sort=order, title=None,
+                axis=alt.Axis(labelAngle=0 if len(order) <= 8 else -45, labelOverlap=True)),
         y=alt.Y("amount:Q", stack="normalize" if as_share else True, title=None if as_share else "元",
                 axis=alt.Axis(format=".0%" if as_share else ",.0f", tickCount=5)),
         color=alt.Color("type:N", scale=type_scale, legend=type_legend), order=type_order,
-        tooltip=[alt.Tooltip("yearmonthdate(date):T", title="日期", format="%Y-%m-%d"),
-                 alt.Tooltip("type:N", title="类型"), alt.Tooltip("tip:N", title="金额"),
-                 alt.Tooltip("share:Q", title="占当天", format=".0%")],
-    ).transform_calculate(sort_key=SORT_KEY).properties(height=240)
+        tooltip=[alt.Tooltip("label:N", title="这一周"), alt.Tooltip("type:N", title="类型"),
+                 alt.Tooltip("tip:N", title="金额"), alt.Tooltip("share:Q", title="占这一周", format=".0%")],
+    ).transform_calculate(sort_key=SORT_KEY).properties(height=260)
     st.altair_chart(style(chart), width="stretch",
-                    alt="每天的支出，按必要、弹性、其他分段" + ("，显示每天的占比" if as_share else ""))
-    st.caption("切到「占比」看每天的钱里必要和弹性各占多少；鼠标移到柱子上看具体金额。")
+                    alt="每周的支出，按必要、弹性、其他分段" + ("，显示每周的占比" if as_share else ""))
+    st.caption("每根柱子是一周（周一到周日），第一周和最后一周可能不满 7 天。切到「占比」看每周必要和弹性各占多少。")
 
 
 # ---------- 分类 & 商家 ----------
