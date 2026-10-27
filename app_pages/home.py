@@ -34,7 +34,8 @@ whose = f"你的 {int(month[5:])} 月" if use_mine else f"小林的 {int(month[5
 question_list = list(QUESTIONS)
 asked = st.session_state.setdefault("home_question", question_list[0])
 
-left, right = st.columns([5, 4], gap="large", vertical_alignment="center")
+hero = st.container(key="home")          # 右上角的绿色柔光（styles.py）
+left, right = hero.columns([5, 4], gap="large", vertical_alignment="center")
 
 with left:
     st.caption(":material/favorite: 给自己的消费，一点好奇心")
@@ -55,16 +56,22 @@ with left:
             st.switch_page("app_pages/dashboard.py")
 
 
-with right, st.container(border=True):
+# 小票式答案卡片：抬头 → 大金额 → 虚线隔开的明细 → 「看看这几笔」
+with right, st.container(key="receipt"):
     answer = QUESTIONS[asked](df, month)
-    st.caption(f":material/receipt_long: {whose}")
+    with st.container(key="receipt_head", horizontal=True, horizontal_alignment="distribute"):
+        st.caption(":material/receipt_long: 账单体检")
+        st.caption(whose)
     st.markdown(f"**{answer['title']}**")
-    st.markdown(f"# {answer['amount']:,.0f} 元" if answer["amount"] >= 100 else f"# {answer['amount']:,.2f} 元")
+    with st.container(key="receipt_total"):
+        st.markdown(f"# {answer['amount']:,.0f} 元" if answer["amount"] >= 100 else f"# {answer['amount']:,.2f} 元")
     st.caption(answer["note"])
-    for name, detail in answer["items"]:
-        with st.container(horizontal=True, horizontal_alignment="distribute"):
-            st.markdown(name)
-            st.markdown(f":gray[{detail}]")
+    if answer["items"]:
+        with st.container(key="receipt_items", gap="xsmall"):
+            for name, detail in answer["items"]:
+                with st.container(horizontal=True, horizontal_alignment="distribute"):
+                    st.markdown(name)
+                    st.markdown(f":gray[{detail}]")
     if len(answer["rows"]):
         if st.button("看看这几笔", icon=":material/north_east:", type="tertiary"):
             show_rows(answer["title"], answer["rows"])
@@ -73,7 +80,7 @@ with right, st.container(border=True):
 st.space("large")
 privacy = "账单只在本地处理" if is_local() else "在线演示：账单不保存，关掉页面就清空"
 with st.expander("它是怎么做到的？", icon=":material/help:"):
-    st.markdown(f":blue-badge[:material/lock: {privacy}]")
+    st.markdown(f":green-badge[:material/lock: {privacy}]")
     STEPS = [
         (":material/upload_file:", "导入", "直接用微信、支付宝官方导出的账单，可以一次拖进多个文件。"),
         (":material/cleaning_services:", "自动整理", "去掉退款和关闭的交易，部分退款按实际花费算，跨月退款抵扣本月。"),
@@ -81,5 +88,5 @@ with st.expander("它是怎么做到的？", icon=":material/help:"):
         (":material/insights:", "看懂花销", "看板看钱花在哪；AI 写月报，还能直接问「上个月奶茶花了多少」。"),
     ]
     for col, (icon, title, text) in zip(st.columns(4), STEPS):
-        col.markdown(f"**:blue[{icon}] {title}**")
+        col.markdown(f"**:green[{icon}] {title}**")
         col.caption(text)

@@ -1,6 +1,6 @@
 """看板页：一屏看懂钱花在哪。重点是「必要 / 弹性」（产品决策 Q13）。
 
-颜色：必要 = 蓝、弹性 = 橙、其他 = 灰（dataviz 规范的默认配色，已用校验脚本检查过色盲可分辨）；
+颜色：必要 = 绿、弹性 = 杏橙、其他 = 灰（奶油白 + 鼠尾草绿主题，已用 dataviz 校验脚本检查过色盲可分辨）；
 消费日历用红色色阶（只在日历里用，和柱状图的橙色不会同时出现在一张图里）；
 深色模式换成同色系的深色版本。每张图都有鼠标悬停提示。
 """
@@ -45,12 +45,12 @@ df = require_data()
 
 # ---------- 配色（浅色 / 深色） ----------
 DARK = getattr(st.context.theme, "type", "light") == "dark"
-TYPE_COLORS = {NEED: "#3987e5" if DARK else "#2a78d6", FLEX: "#d95926" if DARK else "#eb6834", OTHER: "#898781"}
+TYPE_COLORS = {NEED: "#3a9c70" if DARK else "#28855c", FLEX: "#d26f30" if DARK else "#e5853f", OTHER: "#8f8c82"}
 # 消费日历（苏宇晨要求用红色，U5）：一个色相（红）从浅到深，已用校验脚本检查：
 # 深浅顺序正确、相邻两档分得清、最浅一档和背景也分得清；没花钱的日子用中性灰，不参与色阶
 HEAT = ["#8a2826", "#c23a37", "#e86a66", "#f5aaa6"] if DARK else ["#f09a95", "#e85d58", "#c22f2c", "#8a1c1b"]
-EMPTY_DAY = "#2c2c2a" if DARK else "#f0efec"
-GAP = "#1a1a19" if DARK else "white"          # 相邻色块之间 2px 的缝
+EMPTY_DAY = "#2a2e2a" if DARK else "#efece4"
+GAP = "#1f231f" if DARK else "white"          # 和卡片底色一样          # 相邻色块之间 2px 的缝
 type_scale = alt.Scale(domain=TYPE_ORDER, range=[TYPE_COLORS[t] for t in TYPE_ORDER])
 type_legend = alt.Legend(title=None, orient="top")   # 文字颜色交给主题，切换深浅色时自动跟着变
 type_order = alt.Order("sort_key:Q")
@@ -60,7 +60,8 @@ SORT_KEY = f"indexof({TYPE_ORDER}, datum.type)"   # 堆叠顺序固定：必要�
 def style(chart: alt.Chart) -> alt.Chart:
     """统一的轴、图例样式。文字和网格的颜色不写死，交给 Streamlit 主题：
     这样切换浅色 / 深色时，坐标轴和图例的文字会马上跟着变，不会出现深底深字看不见。"""
-    return (chart.configure_view(strokeWidth=0)
+    return (chart.configure(background="transparent")      # 透明底：和白色卡片融在一起
+            .configure_view(strokeWidth=0)
             .configure_axis(labelFontSize=12, titleFontWeight="normal")
             .configure_legend(labelFontSize=12))
 
@@ -99,13 +100,14 @@ def spark(column: str):
 kw = dict(delta_color="inverse", delta_description=f"比 {int(prev[5:])} 月" if prev else None)
 found = discoveries(view)
 total_col, find_col = st.columns([2, 3])
-total_col.metric("总支出", yuan(k["支出"]), delta("支出"), chart_data=spark("支出"), chart_type="area",
-                 border=True, height="stretch", help="下面的小图是每个月的总支出", **kw)
-with find_col, st.container(border=True, height="stretch"):
+with total_col, st.container(border=True, height="stretch", key="card_total"):
+    st.metric("总支出", yuan(k["支出"]), delta("支出"), chart_data=spark("支出"), chart_type="area",
+              height="stretch", help="下面的小图是每个月的总支出", **kw)
+with find_col, st.container(border=True, height="stretch", key="card_top_find"):
     if found:
         top = found[0]
         st.caption(":material/search: 这段时间最值得看的发现")
-        st.markdown(f"#### :blue[{top['icon']}] {top['text']}")
+        st.markdown(f"#### :green[{top['icon']}] {top['text']}")
         if st.button("看看是哪几笔", icon=":material/north_east:", type="tertiary", key="top_find"):
             show_rows(top["text"], top["rows"])
 
@@ -122,11 +124,11 @@ if period != "全部" and prev is None and any(m < period for m in all_months):
 
 # ---------- 更多发现：每条都能点开看是哪几笔 ----------
 if len(found) > 1:
-    with st.container(border=True):
+    with st.container(border=True, key="card_more_finds"):
         st.markdown("**:material/lightbulb: 还有这些发现**")
         for i, f in enumerate(found[1:]):
             with st.container(horizontal=True, vertical_alignment="center"):
-                st.markdown(f":blue[{f['icon']}] {f['text']}")
+                st.markdown(f":green[{f['icon']}] {f['text']}")
                 if len(f["rows"]):
                     if st.button("看看", icon=":material/north_east:", type="tertiary", key=f"find_{i}"):
                         show_rows(f["text"], f["rows"])
@@ -138,7 +140,7 @@ with st.expander("问问你的账单", icon=":material/chat:", expanded=True):
 
 # ---------- 必要 vs 弹性 ----------
 left, right = st.columns([2, 3])
-with left, st.container(border=True, height="stretch"):
+with left, st.container(border=True, height="stretch", key="card_need_flex"):
     st.markdown("**必要 vs 弹性**")
     shares = pd.DataFrame({"type": TYPE_ORDER, "amount": [max(k[t], 0) for t in TYPE_ORDER]})
     shares = shares[shares["amount"] > 0]
@@ -162,14 +164,14 @@ with left, st.container(border=True, height="stretch"):
     st.altair_chart(style((bar + labels).properties(height=60)), width="stretch",
                     alt=f"必要支出占 {k[NEED] / k['支出']:.0%}，弹性支出占 {k['弹性占比']:.0%}" if k["支出"] else "没有支出")
     # 各分类具体多少钱在下面「各分类支出」图里，这里只列包含哪些分类，避免重复
-    for t, color in ((NEED, "blue"), (FLEX, "orange")):
+    for t, color in ((NEED, "green"), (FLEX, "orange")):
         share = k[t] / k["支出"] if k["支出"] else 0
         st.markdown(f":{color}[**{t} {yuan(k[t])}**]　{share:.0%}  \n"
                     f":gray[{'、'.join(SPENDING_TYPES[t])}]")
     if k[OTHER]:
         st.caption(f"其他 / 未分类 {yuan(k[OTHER])}（{k[OTHER] / k['支出']:.0%}），不算必要或弹性。")
 
-with right, st.container(border=True, height="stretch"):
+with right, st.container(border=True, height="stretch", key="card_monthly"):
     st.markdown("**每月支出**")
     monthly = monthly_by_type(view)
     if monthly["month"].nunique() < 2:
@@ -187,7 +189,7 @@ with right, st.container(border=True, height="stretch"):
 
 
 # ---------- 每周支出（苏宇晨的需求：按周看花费和占比；按天太碎，每天的情况看下面的日历） ----------
-with st.container(border=True):
+with st.container(border=True, key="card_weekly"):
     head, switch = st.columns([3, 2], vertical_alignment="center")
     head.markdown("**每周支出**")
     show = switch.segmented_control("显示", ["金额", "占比"], default="金额", required=True,
@@ -213,7 +215,7 @@ with st.container(border=True):
 # ---------- 工作日 / 周末 / 节假日（苏宇晨的需求：把日常和周末、假期分开看） ----------
 day_stats = by_day_type(view)
 if len(day_stats):
-    with st.container(border=True):
+    with st.container(border=True, key="card_daytype"):
         st.markdown("**工作日、周末、节假日**")
         st.caption("比的是「平均每天花多少」：一个月里工作日有二十多天、周末只有八九天，直接比总数没有意义。"
                    "节假日按国家法定假期算，调休上班的周末算工作日。")
@@ -271,16 +273,16 @@ def ranking(data: pd.DataFrame, field: str, name: str, alt_text: str):
 
 
 left, right = st.columns(2)
-with left, st.container(border=True, height="stretch"):
+with left, st.container(border=True, height="stretch", key="card_category"):
     st.markdown("**各分类支出**")
     ranking(by_category(view), "category", "分类", "各分类支出，从多到少，颜色表示必要或弹性")
-with right, st.container(border=True, height="stretch"):
+with right, st.container(border=True, height="stretch", key="card_merchants"):
     st.markdown("**花钱最多的 10 个商家**")
     ranking(top_merchants(view, 10), "counterparty", "商家", "花钱最多的 10 个商家")
 
 
 # ---------- 消费日历 ----------
-with st.container(border=True):
+with st.container(border=True, key="card_calendar"):
     st.markdown("**消费日历**")
     cal = daily(view)
     cal["星期"] = cal["weekday"].map(lambda d: "一二三四五六日"[d]).radd("周")
