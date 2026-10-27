@@ -87,6 +87,36 @@ def monthly_trend(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["month", "支出", "日均", "吃喝", "弹性占比"])
 
 
+def by_day_type(df: pd.DataFrame) -> pd.DataFrame:
+    """工作日 / 周末 / 节假日 各自的花销。比较时看「日均」：天数不一样，直接比总数没有意义。
+
+    列：day_type、days（这段时间里这类日子有几天）、amount（总支出）、daily（日均）、
+        need_daily / flex_daily（日均里必要 / 弹性各多少）、flex_share（弹性占比）、top_category（花得最多的分类）。
+    没有这类日子的不列出来。
+    """
+    from core.daytype import DAY_TYPES, count_days, day_types
+
+    s = spending(df)
+    if s.empty:
+        return pd.DataFrame(columns=["day_type", "days", "amount", "daily", "need_daily", "flex_daily",
+                                     "flex_share", "top_category"])
+    s["day_type"] = day_types(s["date"])
+    days = count_days(df["time"].min().date(), df["time"].max().date())
+    rows = []
+    for t in DAY_TYPES:
+        if not days[t]:
+            continue
+        part = s[s["day_type"] == t]
+        total = float(part["amount"].sum())
+        need = float(part.loc[part["type"] == NEED, "amount"].sum())
+        flex = float(part.loc[part["type"] == FLEX, "amount"].sum())
+        top = part.groupby("category")["amount"].sum().idxmax() if len(part) else "—"
+        rows.append({"day_type": t, "days": days[t], "amount": round(total, 2), "daily": round(total / days[t], 2),
+                     "need_daily": round(need / days[t], 2), "flex_daily": round(flex / days[t], 2),
+                     "flex_share": flex / total if total > 0 else 0.0, "top_category": top})
+    return pd.DataFrame(rows)
+
+
 def weekly_by_type(df: pd.DataFrame) -> pd.DataFrame:
     """每周（周一到周日）必要 / 弹性 / 其他 各花了多少。
 

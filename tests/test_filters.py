@@ -116,3 +116,12 @@ def test_summarize_by_group_merges_food_and_snacks():
     food = group_spending(df, "吃喝")
     assert food["吃喝"] == by_group.loc["吃喝", "支出"]
     assert food["餐饮"] == by_cat.loc["餐饮", "支出"] and food["零食饮品"] == by_cat.loc["零食饮品", "支出"]
+
+
+def test_filter_by_day_kind(df):
+    from core.daytype import day_types
+    out = filter_transactions(df, day_kinds=["节假日"])
+    assert len(out) > 0 and (day_types(out["time"]) == "节假日").all()
+    assert out["time"].dt.strftime("%m-%d").isin(["10-01", "10-02", "10-03", "10-04", "10-05", "10-06", "10-07",
+                                                   "09-25", "09-26", "09-27", "06-19", "06-20", "06-21",
+                                                   "05-01", "05-02", "05-03", "05-04", "05-05"]).all()

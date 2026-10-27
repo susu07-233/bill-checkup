@@ -61,7 +61,8 @@ def test_all_questions_answer(df):
 def test_discoveries_have_evidence(df):
     from core.curiosity import discoveries
     found = discoveries(df)
-    assert 4 <= len(found) <= 5
+    assert 4 <= len(found) <= 6
+    assert any("周末平均每天花" in f["text"] for f in found)              # 示例数据周末明显花得多
     top = found[0]
     assert "钱最多花在" in top["text"] and len(top["rows"]) > 0
     cat = top["text"].split("「")[1].split("」")[0]

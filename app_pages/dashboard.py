@@ -12,6 +12,7 @@ import streamlit as st
 import app_state
 from app_state import require_data
 from core.curiosity import discoveries
+from core.daytype import WEEKEND, WORKDAY, holiday_names
 from ui_parts import ask_box, show_rows
 from core.dashboard import (
     FLEX,
@@ -19,6 +20,7 @@ from core.dashboard import (
     OTHER,
     TYPE_ORDER,
     by_category,
+    by_day_type,
     daily,
     in_month,
     insights,
@@ -206,6 +208,51 @@ with st.container(border=True):
     st.altair_chart(style(chart), width="stretch",
                     alt="每周的支出，按必要、弹性、其他分段" + ("，显示每周的占比" if as_share else ""))
     st.caption("每根柱子是一周（周一到周日），第一周和最后一周可能不满 7 天。切到「占比」看每周必要和弹性各占多少。")
+
+
+# ---------- 工作日 / 周末 / 节假日（苏宇晨的需求：把日常和周末、假期分开看） ----------
+day_stats = by_day_type(view)
+if len(day_stats):
+    with st.container(border=True):
+        st.markdown("**工作日、周末、节假日**")
+        st.caption("比的是「平均每天花多少」：一个月里工作日有二十多天、周末只有八九天，直接比总数没有意义。"
+                   "节假日按国家法定假期算，调休上班的周末算工作日。")
+        chart_col, text_col = st.columns([3, 2], vertical_alignment="center")
+        with chart_col:
+            parts = day_stats.assign(other_daily=lambda d: (d["daily"] - d["need_daily"] - d["flex_daily"]).clip(lower=0))
+            long = parts[["day_type", "days", "need_daily", "flex_daily", "other_daily"]].melt(
+                id_vars=["day_type", "days"], var_name="part", value_name="amount")
+            long["type"] = long["part"].map({"need_daily": NEED, "flex_daily": FLEX, "other_daily": OTHER})
+            long["label"] = long["day_type"] + "（" + long["days"].astype(str) + " 天）"
+            long["tip"] = long["amount"].map(yuan)
+            order = list(parts["day_type"] + "（" + parts["days"].astype(str) + " 天）")
+            bars = alt.Chart(long).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=46,
+                                            stroke=GAP, strokeWidth=2).encode(
+                x=alt.X("label:N", sort=order, title=None, axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("sum(amount):Q", title="日均（元）", axis=alt.Axis(format=",.0f", tickCount=4)),
+                color=alt.Color("type:N", scale=type_scale, legend=type_legend), order=type_order,
+                tooltip=[alt.Tooltip("label:N", title="日子"), alt.Tooltip("type:N", title="类型"),
+                         alt.Tooltip("tip:N", title="日均")],
+            ).transform_calculate(sort_key=SORT_KEY)
+            totals_text = alt.Chart(parts.assign(label=order, tip=parts["daily"].map(lambda v: f"{v:,.0f} 元")))\
+                .mark_text(dy=-8, fontSize=13, fontWeight="bold").encode(
+                    x=alt.X("label:N", sort=order), y=alt.Y("daily:Q"), text="tip:N")
+            st.altair_chart(style((bars + totals_text).properties(height=240)), width="stretch",
+                            alt="工作日、周末、节假日的日均支出，按必要、弹性、其他分段")
+        with text_col:
+            stats = day_stats.set_index("day_type")
+            for t in stats.index:
+                r = stats.loc[t]
+                st.markdown(f"**{t}**　日均 **{yuan(r['daily'], 0)}**  \n"
+                            f":gray[{r['days']} 天 · 弹性占 {r['flex_share']:.0%} · 花得最多：{r['top_category']}]")
+            if {WORKDAY, WEEKEND} <= set(stats.index) and stats.loc[WORKDAY, "daily"] > 0:
+                ratio = stats.loc[WEEKEND, "daily"] / stats.loc[WORKDAY, "daily"]
+                more_or_less = f"是工作日的 **{ratio:.1f} 倍**" if ratio >= 1.05 else (
+                    f"只有工作日的 **{ratio:.0%}**" if ratio <= 0.95 else "和工作日**差不多**")
+                st.markdown(f":material/weekend: 周末平均每天花的钱{more_or_less}。")
+            holidays = holiday_names(view)
+            if holidays:
+                st.caption("这段时间的节假日：" + "、".join(holidays))
 
 
 # ---------- 分类 & 商家 ----------

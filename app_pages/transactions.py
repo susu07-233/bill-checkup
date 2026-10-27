@@ -9,6 +9,7 @@ import streamlit as st
 
 from app_state import change_category, require_data, set_excluded
 from core.clean import totals
+from core.daytype import DAY_TYPES
 from core.filters import UNCATEGORIZED, filter_transactions, group_key, group_spending, summarize
 from core.money import YUAN_COLUMN_FORMAT, yuan
 from core.overrides import is_local, is_manually_excluded
@@ -29,18 +30,21 @@ df = require_data()
 # ---------- 筛选 ----------
 with st.container(border=True):
     first_day, last_day = df["time"].min().date(), df["time"].max().date()
-    c1, c2 = st.columns([1, 2])
+    c1, c_day, c2 = st.columns([1, 1.3, 1.7])
     with c1:
         period = st.date_input("时间范围", value=(first_day, last_day), min_value=first_day, max_value=last_day)
+    with c_day:
+        day_kind = st.segmented_control("日子", [ALL, *DAY_TYPES], default=ALL, required=True, key="day_kind",
+                                        help="节假日按国家法定假期算；调休上班的周末算工作日")
     with c2:
         keyword = st.text_input("搜索", placeholder="商家或商品，多个词用空格隔开，比如：美团 外卖")
 
     # 平台、收/支：单选，点哪个就「只看哪个」；required=True 保证不会一个都没选
     c3, c4, c5 = st.columns([1.1, 1.9, 2])
     with c3:
-        platform = st.segmented_control("平台", [ALL, *PLATFORMS], default=ALL, required=True)
+        platform = st.segmented_control("平台", [ALL, *PLATFORMS], default=ALL, required=True, key="platform")
     with c4:
-        direction = st.segmented_control("收/支", [ALL, *DIRECTIONS], default=ALL, required=True)
+        direction = st.segmented_control("收/支", [ALL, *DIRECTIONS], default=ALL, required=True, key="direction")
     with c5:
         # 分类：选项后面带上笔数，一眼看出哪些分类还没有交易
         category_counts = df["category"].fillna(UNCATEGORIZED).replace("", UNCATEGORIZED).value_counts()
@@ -62,7 +66,8 @@ directions = DIRECTIONS if direction == ALL else [direction]
 period = tuple(period) if isinstance(period, (tuple, list)) else (period,)
 start = period[0] if len(period) >= 1 else first_day
 end = period[1] if len(period) >= 2 else last_day
-view = filter_transactions(df, start, end, platforms, directions, categories, keyword)
+view = filter_transactions(df, start, end, platforms, directions, categories, keyword,
+                           day_kinds=None if day_kind == ALL else [day_kind])
 
 
 # ---------- 汇总 ----------

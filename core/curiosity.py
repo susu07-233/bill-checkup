@@ -140,6 +140,17 @@ def discoveries(df: pd.DataFrame) -> list[dict]:
     if shop:
         found.append(shop)
 
+    # 周末 vs 工作日：差别明显（多 / 少 20% 以上）才说
+    from core.dashboard import by_day_type
+    from core.daytype import WEEKEND, WORKDAY, day_types
+    stats = by_day_type(df).set_index("day_type")
+    if {WORKDAY, WEEKEND} <= set(stats.index) and stats.loc[WORKDAY, "daily"] > 0:
+        ratio = stats.loc[WEEKEND, "daily"] / stats.loc[WORKDAY, "daily"]
+        if ratio >= 1.2 or ratio <= 0.8:
+            words = f"是工作日的 {ratio:.1f} 倍" if ratio >= 1.2 else f"只有工作日的 {ratio:.0%}"
+            found.append({"icon": ":material/weekend:", "rows": s[day_types(s["date"]) == WEEKEND],
+                          "text": f"周末平均每天花 {stats.loc[WEEKEND, 'daily']:,.0f} 元，{words}"})
+
     no_spend = int((d["amount"] <= 0).sum())
     if no_spend:
         found.append({"icon": ":material/sentiment_satisfied:", "rows": s.iloc[0:0],

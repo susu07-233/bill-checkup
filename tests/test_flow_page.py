@@ -107,14 +107,14 @@ def test_pick_a_category_including_income_group():
 def test_clicking_a_platform_shows_only_that_platform():
     """苏宇晨测试发现的问题：以前点一个平台是「取消」它，全部取消后又变成显示全部。"""
     at = page_with_demo_data()
-    at.segmented_control[0].set_value("微信").run()
+    at.segmented_control(key="platform").set_value("微信").run()
     df = at.session_state["transactions"]
     assert at.metric[0].value == f"{(df['platform'] == '微信').sum()} 笔"
 
 
 def test_clicking_a_direction_shows_only_that_direction():
     at = page_with_demo_data()
-    at.segmented_control[1].set_value("支出").run()
+    at.segmented_control(key="direction").set_value("支出").run()
     df = at.session_state["transactions"]
     assert at.metric[0].value == f"{(df['direction'] == '支出').sum()} 笔"
     assert metric(at, "收入") == "0.00 元"                        # 只看支出，收入为 0
@@ -167,3 +167,12 @@ def test_bulk_set_category():
     # 其他交易没被改
     others = before[~before["counterparty"].str.contains("食堂")]
     assert df.set_index("id").loc[others["id"], "category"].tolist() == others["category"].tolist()
+
+
+def test_filter_by_day_kind():
+    from core.daytype import day_types
+    at = page_with_demo_data()
+    at.segmented_control(key="day_kind").set_value("周末").run()
+    assert not at.exception
+    df = at.session_state["transactions"]
+    assert metric(at, "筛选出") == f"{(day_types(df['time']) == '周末').sum()} 笔"

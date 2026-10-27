@@ -19,6 +19,7 @@ def filter_transactions(
     directions: list[str] | None = None,
     categories: list[str] | None = None,
     keyword: str = "",
+    day_kinds: list[str] | None = None,
 ) -> pd.DataFrame:
     """按条件筛选交易。参数为空（None 或空列表）表示这一项不筛选。
 
@@ -39,6 +40,9 @@ def filter_transactions(
     if categories:
         category = df["category"].fillna(UNCATEGORIZED).replace("", UNCATEGORIZED)
         mask &= category.isin(categories)
+    if day_kinds:   # 工作日 / 周末 / 节假日
+        from core.daytype import day_types
+        mask &= day_types(df["time"]).isin(day_kinds)
     if keyword.strip():
         text = (df["counterparty"].astype(str) + " " + df["item"].astype(str)).str.lower()
         for word in keyword.lower().split():   # 多个词用空格隔开，要同时包含

@@ -32,7 +32,9 @@ def test_dashboard_renders_with_demo_data():
     k = kpis(at.session_state["transactions"])
     assert metric(at, "总支出") == f"{k['支出']:,.2f} 元"
     assert metric(at, "弹性支出占比") == f"{k['弹性占比']:.0%}"
-    assert len(at.get("vega_lite_chart")) == 6                       # 必要/弹性、每月、每周、分类、商家、日历
+    assert len(at.get("vega_lite_chart")) == 7                       # 必要/弹性、每月、每周、工作日周末节假日、分类、商家、日历
+    assert any("周末平均每天花的钱" in m.value for m in at.markdown)   # 工作日 vs 周末的一句话对比
+    assert any("这段时间的节假日" in c.value for c in at.caption)
     assert any("钱最多花在" in m.value for m in at.markdown)          # 顶部突出的发现
     assert any("花得最多的是" in m.value for m in at.markdown)        # 「还有这些发现」
 
