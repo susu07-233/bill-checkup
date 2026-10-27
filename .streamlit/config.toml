@@ -7,6 +7,10 @@ gatherUsageStats = false
 # 右上角只留最少的菜单（去掉「Deploy」等开发用按钮）
 toolbarMode = "minimal"
 
+[server]
+# 代码文件改了就自动重新运行，不再弹出英文的「File change. Rerun / Always rerun」提示
+runOnSave = true
+
 # ---------- 主题 ----------
 # 主色用「必要」的蓝色，和图表一致；支持浅色 / 深色两种模式（右上角菜单里切换）。
 # 颜色取自 dataviz 规范的默认配色，图表里的蓝 / 橙已用校验脚本检查过色盲可分辨。
