@@ -4,16 +4,13 @@
 被排除的记录存在 st.session_state["removed"] 里，方便核对。
 """
 
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 
 from core.clean import clean, cross_month_refunds, totals
+from core.demo import demo_files
 from core.parse import parse_bill
 from core.schema import COLUMN_LABELS, empty_table
-
-SAMPLES = Path(__file__).parent.parent / "tests" / "fixtures"
 
 st.title("📥 导入账单")
 st.write("支持微信账单（.xlsx）和支付宝账单（.csv），可以一次选多个文件。")
@@ -60,8 +57,8 @@ with col1:
     if st.button("开始解析", type="primary", disabled=not uploaded):
         load([(f.name, f.getvalue()) for f in uploaded])
 with col2:
-    if st.button("没有账单？用示例账单试试"):
-        load([(p.name, p.read_bytes()) for p in sorted(SAMPLES.glob("*_sample.*"))])
+    if st.button("没有账单？用示例账单试试", help="虚构大学生「小林」半年的微信 + 支付宝账单，所有交易都是编的"):
+        load(demo_files())
 
 # ---------- 结果预览 ----------
 df = st.session_state.get("transactions", empty_table())
