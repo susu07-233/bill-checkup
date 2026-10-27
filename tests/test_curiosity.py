@@ -73,3 +73,10 @@ def test_discoveries_have_evidence(df):
 def test_discoveries_empty_when_no_spending(df):
     from core.curiosity import discoveries
     assert discoveries(df[df["direction"] == "收入"]) == []
+
+
+def test_delivery_orders_show_the_shop_name():
+    from core.curiosity import _shop_name
+    row = {"counterparty": "饿了么", "item": "爷爷不泡茶上饶铅山辛弃疾广场店外卖订单"}
+    assert _shop_name(row).startswith("爷爷不泡茶")
+    assert _shop_name({"counterparty": "古茗", "item": "奶茶"}) == "古茗"

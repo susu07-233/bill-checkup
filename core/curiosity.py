@@ -22,6 +22,18 @@ DRINK_CATEGORIES = {"零食饮品", "餐饮"}
 PRIVATE_CATEGORIES = {"社交"}            # 转账、红包：「商家」其实是人，不当成「常去的店」
 
 
+DELIVERY_PLATFORMS = {"饿了么", "美团", "淘宝闪购", "美团外卖"}
+
+
+def _shop_name(row) -> str:
+    """外卖订单的「商家」是平台（饿了么），真正的店名写在商品里（「爷爷不泡茶XX店外卖订单」）。"""
+    item = str(row["item"] or "")
+    if row["counterparty"] in DELIVERY_PLATFORMS and item and item != "/":
+        name = item.split("外卖订单")[0].split("订单")[0].replace(f"{row['counterparty']}", "").strip("-（( ")
+        return (name[:10] + "…" if len(name) > 10 else name) or row["counterparty"]
+    return row["counterparty"]
+
+
 def latest_month(df: pd.DataFrame) -> str:
     return months(df)[-1]
 
@@ -46,7 +58,8 @@ def milk_tea(df: pd.DataFrame, month: str) -> dict:
         hit &= ~text.str.contains(word, regex=False)
     rows = s[hit]
     total, count = float(rows["amount"].sum()), len(rows)
-    shops = rows.groupby("counterparty")["amount"].agg(["count", "sum"]).sort_values("sum", ascending=False).head(3)
+    shops = (rows.assign(shop=rows.apply(_shop_name, axis=1)).groupby("shop")["amount"]
+             .agg(["count", "sum"]).sort_values("sum", ascending=False).head(3))
     return {
         "title": "原来，奶茶是这样攒起来的" if count else "这个月没喝奶茶，真能忍",
         "amount": round(total, 2),
