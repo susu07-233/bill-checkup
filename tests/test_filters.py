@@ -8,7 +8,14 @@ import pytest
 from core.clean import clean
 from core.demo import demo_files
 from core.clean import totals
-from core.filters import SOURCE_MANUAL, UNCATEGORIZED, filter_transactions, set_category, summarize
+from core.filters import (
+    NOT_SPENDING,
+    SOURCE_MANUAL,
+    UNCATEGORIZED,
+    filter_transactions,
+    set_category,
+    summarize,
+)
 from core.parse import parse_bill
 
 
@@ -76,8 +83,10 @@ def test_summarize_by_merchant(df):
     assert canteen["支出"] == round(expected, 2)
 
 
-def test_summarize_by_category_counts_uncategorized(df):
+def test_summarize_by_category_separates_income_from_uncategorized(df):
     labelled = set_category(df, df[df["counterparty"].str.contains("食堂")]["id"], "餐饮")
     out = summarize(labelled, "category").set_index("category")
-    assert set(out.index) == {"餐饮", UNCATEGORIZED}
+    assert set(out.index) == {"餐饮", UNCATEGORIZED, NOT_SPENDING}
     assert out["笔数"].sum() == len(df)
+    assert out.loc[NOT_SPENDING, "支出"] == 0                       # 这一组只有收入和不计收支
+    assert out.loc[UNCATEGORIZED, "收入"] == 0                      # 未分类的都是支出

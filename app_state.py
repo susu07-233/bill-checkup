@@ -1,4 +1,4 @@
-"""各个页面共用的「导入数据」操作：解析 → 合并 → 清洗 → 存进 session_state。
+"""各个页面共用的「导入数据」操作：解析 → 合并 → 清洗 → 自动分类 → 存进 session_state。
 
 st.session_state 里的约定：
   transactions —— 清洗后的交易表（流水、看板、报告都读它）
@@ -8,6 +8,7 @@ st.session_state 里的约定：
 import pandas as pd
 import streamlit as st
 
+from core.classify import classify
 from core.clean import clean
 from core.parse import parse_bill
 
@@ -23,6 +24,7 @@ def load_files(files: list[tuple[str, bytes]]) -> list[str]:
 
     if tables:
         kept, removed = clean(pd.concat(tables, ignore_index=True))
+        kept = classify(kept)
         st.session_state["transactions"] = kept.sort_values("time", ascending=False).reset_index(drop=True)
         st.session_state["removed"] = removed
     return errors

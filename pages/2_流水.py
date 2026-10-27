@@ -10,7 +10,7 @@ import streamlit as st
 from app_state import load_files
 from core.clean import totals
 from core.demo import demo_files
-from core.filters import UNCATEGORIZED, filter_transactions, set_category, summarize
+from core.filters import UNCATEGORIZED, filter_transactions, group_key, set_category, summarize
 from core.schema import CATEGORIES, COLUMN_LABELS, DIRECTIONS, PLATFORMS
 
 EDITOR_KEY = "flow_editor"
@@ -56,7 +56,7 @@ with st.container(border=True):
             format_func=lambda c: f"{c}（{category_counts.get(c, 0)} 笔）",
             placeholder="还没有交易分类" if nothing_categorized else "全部分类",
             disabled=nothing_categorized,
-            help="只列出已经有交易的分类。自动分类会在下一步加上；现在可以在下方表格里手动改分类。",
+            help="只列出已经有交易的分类。导入时会自动分类；分错了可以在「明细」里手动改。",
         )
 
 platforms = PLATFORMS if platform == ALL else [platform]
@@ -115,8 +115,7 @@ if mode in (MODE_MERCHANT, MODE_CATEGORY):
         key=f"pick_{by}",
     )
     if picked is not None:
-        key = view[by].fillna(UNCATEGORIZED) if by == "category" else view[by]
-        rows = view[key == picked]
+        rows = view[group_key(view, by) == picked]
         st.subheader(f"{picked} 的 {len(rows)} 笔明细")
         st.dataframe(
             rows[SHOWN_COLUMNS].rename(columns=COLUMN_LABELS),

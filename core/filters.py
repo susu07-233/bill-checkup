@@ -5,6 +5,7 @@ from datetime import date
 import pandas as pd
 
 UNCATEGORIZED = "未分类"
+NOT_SPENDING = "收入 / 不计收支"   # 按分类汇总时，非支出记录归到这一组
 SOURCE_MANUAL = "手动"
 
 
@@ -44,13 +45,21 @@ def filter_transactions(
     return df[mask]
 
 
+def group_key(df: pd.DataFrame, by: str) -> pd.Series:
+    """汇总时每笔交易归到哪一组。按分类汇总时：
+    只有支出才分类；收入、不计收支单独成一组，免得被当成「没分出来的支出」。"""
+    if by != "category":
+        return df[by]
+    return df[by].fillna(UNCATEGORIZED).replace("", UNCATEGORIZED).where(df["direction"] == "支出", NOT_SPENDING)
+
+
 def summarize(df: pd.DataFrame, by: str) -> pd.DataFrame:
     """按某一列（比如 counterparty 商家、category 分类）汇总：每一项花了多少、收了多少。
 
     返回列：by、笔数、支出、收入、支出占比（0–1），按支出从多到少排序。
     「不计收支」的记录只算笔数，不算钱。跨月退款是负数，会抵扣对应项的支出。
     """
-    key = df[by].fillna(UNCATEGORIZED).replace("", UNCATEGORIZED) if by == "category" else df[by]
+    key = group_key(df, by)
     spend = df["amount"].where(df["direction"] == "支出", 0.0)
     income = df["amount"].where(df["direction"] == "收入", 0.0)
     out = (

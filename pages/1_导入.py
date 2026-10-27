@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from app_state import clear, load_files
+from core.classify import coverage
 from core.clean import cross_month_refunds, totals
 from core.demo import demo_files
 from core.schema import COLUMN_LABELS, empty_table
@@ -67,6 +68,14 @@ m4.metric("时间范围", f"{df['time'].min():%m/%d}–{df['time'].max():%m/%d}"
 
 counts = df["platform"].value_counts()
 st.write("　".join(f"**{k}** {v} 笔" for k, v in counts.items()))
+
+spend = df[df["direction"] == "支出"]
+unclassified = spend["category"].isna().sum()
+if unclassified:
+    st.write(f":material/category: 自动分类：支出里 **{coverage(df):.0%}** 已分类，"
+             f"还有 **{unclassified} 笔**没认出来，可以在「流水」页手动改。")
+else:
+    st.write(":material/category: 自动分类：所有支出都已分类，可以在「流水」页查看和修改。")
 notes = ["「不计收支」的记录（充值、理财、余额宝转入等）保留在表里，但不算进支出和收入", "部分退款已自动扣除"]
 refunds = cross_month_refunds(df)
 if not refunds.empty:

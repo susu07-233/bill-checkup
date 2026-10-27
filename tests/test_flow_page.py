@@ -69,6 +69,16 @@ def test_pick_a_merchant_to_see_its_transactions():
     assert set(detail["交易对方"]) == {"美团"}
 
 
+def test_pick_a_category_including_income_group():
+    at = page_with_demo_data()
+    at.segmented_control(key="flow_mode").set_value("按分类汇总").run()
+    df = at.session_state["transactions"]
+    at.selectbox(key="pick_category").select("收入 / 不计收支").run()
+    assert len(at.dataframe[1].value) == (df["direction"] != "支出").sum()
+    at.selectbox(key="pick_category").select("交通").run()
+    assert len(at.dataframe[1].value) == ((df["category"] == "交通") & (df["direction"] == "支出")).sum()
+
+
 def test_clicking_a_platform_shows_only_that_platform():
     """苏宇晨测试发现的问题：以前点一个平台是「取消」它，全部取消后又变成显示全部。"""
     at = page_with_demo_data()
@@ -85,18 +95,21 @@ def test_clicking_a_direction_shows_only_that_direction():
     assert at.metric[2].value == "¥0.00"                         # 只看支出，收入为 0
 
 
-def test_category_filter_disabled_until_something_is_categorized():
+def test_category_filter_disabled_when_nothing_is_categorized():
     """苏宇晨测试发现的问题：还没分类时选任何分类都是 0 笔，让人以为坏了。"""
     at = page_with_demo_data()
+    at.session_state["transactions"] = at.session_state["transactions"].assign(category=None, category_source=None)
+    at.run()
     assert at.multiselect[0].disabled
 
-    bulk_set(at, "食堂", "餐饮")
-    at.text_input[0].input("").run()
 
+def test_imported_data_is_auto_categorized_and_filterable():
+    at = page_with_demo_data()
     assert not at.multiselect[0].disabled
-    at.multiselect[0].select("餐饮").run()
+    at.multiselect[0].select("零食饮品").run()
     df = at.session_state["transactions"]
-    assert at.metric[0].value == f"{(df['category'] == '餐饮').sum()} 笔"
+    assert at.metric[0].value == f"{(df['category'] == '零食饮品').sum()} 笔"
+    assert set(at.dataframe[0].value["商家"]) >= {"瑞幸咖啡", "蜜雪冰城"}
 
 
 def test_keyword_search():
@@ -108,11 +121,14 @@ def test_keyword_search():
 
 def test_bulk_set_category():
     at = page_with_demo_data()
-    bulk_set(at, "食堂", "餐饮")
+    before = at.session_state["transactions"].copy()
+    bulk_set(at, "食堂", "其他")
 
     assert not at.exception
     df = at.session_state["transactions"]
-    canteen = df[df["counterparty"].str.contains("食堂")]
-    assert (canteen["category"] == "餐饮").all()
-    assert (canteen["category_source"] == "手动").all()
-    assert df.loc[~df["counterparty"].str.contains("食堂"), "category"].isna().all()   # 其他交易没被改
+    is_canteen = df["counterparty"].str.contains("食堂")
+    assert (df.loc[is_canteen, "category"] == "其他").all()
+    assert (df.loc[is_canteen, "category_source"] == "手动").all()
+    # 其他交易没被改
+    others = before[~before["counterparty"].str.contains("食堂")]
+    assert df.set_index("id").loc[others["id"], "category"].tolist() == others["category"].tolist()
