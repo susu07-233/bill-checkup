@@ -33,7 +33,15 @@ def test_dashboard_renders_with_demo_data():
     assert metric(at, "总支出") == f"{k['支出']:,.2f} 元"
     assert metric(at, "弹性支出占比") == f"{k['弹性占比']:.0%}"
     assert len(at.get("vega_lite_chart")) == 6                       # 必要/弹性、每月、每周、分类、商家、日历
-    assert any("花得最多的一天" in m.value for m in at.markdown)
+    assert any("钱最多花在" in m.value for m in at.markdown)          # 顶部突出的发现
+    assert any("花得最多的是" in m.value for m in at.markdown)        # 「还有这些发现」
+
+
+def test_top_discovery_opens_its_transactions():
+    at = page_with_demo_data()
+    next(b for b in at.button if b.label == "看看是哪几笔").click().run()
+    assert not at.exception
+    assert any("笔，合计" in c.value for c in at.caption)               # 弹窗里显示了这几笔
 
 
 def test_weekly_chart_share_mode():

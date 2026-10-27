@@ -9,7 +9,10 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+import app_state
 from app_state import require_data
+from core.curiosity import discoveries
+from ui_parts import ask_box, show_rows
 from core.dashboard import (
     FLEX,
     NEED,
@@ -34,7 +37,7 @@ from core.schema import SPENDING_TYPES
 head, picker = st.columns([3, 1], vertical_alignment="bottom")
 with head:
     st.title("消费看板", icon=":material/bar_chart:", anchor=False)
-    st.caption("一屏看懂钱花在哪，哪些是必须花的、哪些是可以省的。")
+    st.caption("一屏看懂钱花在哪：哪些是日常必需，哪些是自己选择的小开心。")
 df = require_data()
 
 
@@ -89,38 +92,46 @@ def spark(column: str):
     return trend[column].tolist() if len(trend) >= 2 else None
 
 
-# 用固定 4 列：卡片带趋势小图后变宽，用会自动换行的布局时第 4 张会掉到下一行
-c1, c2, c3, c4 = st.columns(4)
-kw = dict(border=True, delta_color="inverse", chart_type="area", height="stretch",
-          delta_description=f"比 {int(prev[5:])} 月" if prev else None)
-c1.metric("总支出", yuan(k["支出"]), delta("支出"), chart_data=spark("支出"),
-          help="下面的小图是每个月的总支出", **kw)
-c2.metric("日均", yuan(k["日均"]), delta("日均"), chart_data=spark("日均"),
-          help=f"总支出 ÷ {k['天数']} 天；小图是每个月的日均", **kw)
-c3.metric("其中吃喝", yuan(k["吃喝"]), delta("吃喝"), chart_data=spark("吃喝"),
-          help="餐饮 + 零食饮品；小图是每个月的吃喝支出", **kw)
-c4.metric("弹性支出占比", f"{k['弹性占比']:.0%}", delta("弹性占比", percent_points=True),
-          chart_data=spark("弹性占比"),
-          help="弹性 = 零食饮品、购物、娱乐、社交，是「可以省」的钱；必要 = 餐饮、交通、生活服务、医疗、学习。"
-               "小图是每个月的弹性占比", **kw)
+# 顶部只突出两样东西（Codex 的建议：先讲一个发现，不要一排一样大的卡片）：
+#   左：总支出 + 逐月趋势；右：这段时间最值得看的一条发现，可以点开看是哪几笔
+kw = dict(delta_color="inverse", delta_description=f"比 {int(prev[5:])} 月" if prev else None)
+found = discoveries(view)
+total_col, find_col = st.columns([2, 3])
+total_col.metric("总支出", yuan(k["支出"]), delta("支出"), chart_data=spark("支出"), chart_type="area",
+                 border=True, height="stretch", help="下面的小图是每个月的总支出", **kw)
+with find_col, st.container(border=True, height="stretch"):
+    if found:
+        top = found[0]
+        st.caption(":material/search: 这段时间最值得看的发现")
+        st.markdown(f"#### :blue[{top['icon']}] {top['text']}")
+        if st.button("看看是哪几笔", icon=":material/north_east:", type="tertiary", key="top_find"):
+            show_rows(top["text"], top["rows"])
+
+# 次要数字：不加边框、不加趋势图，视觉上轻一点
+with st.container(horizontal=True):
+    st.metric("日均", yuan(k["日均"]), delta("日均"), help=f"总支出 ÷ {k['天数']} 天", **kw)
+    st.metric("其中吃喝", yuan(k["吃喝"]), delta("吃喝"), help="餐饮 + 零食饮品", **kw)
+    st.metric("弹性支出占比", f"{k['弹性占比']:.0%}", delta("弹性占比", percent_points=True),
+              help="弹性 = 零食饮品、购物、娱乐、社交：多花还是少花，可以自己决定的部分（不一定要省）。"
+                   "必要 = 餐饮、交通、生活服务、医疗、学习。", **kw)
 
 if period != "全部" and prev is None and any(m < period for m in all_months):
     st.caption("上个月的账单不到 20 天，不做「比上月」，免得得出误导的结论。")
 
-# ---------- 小结：每条结论一张小卡片，配一个图标 ----------
-INSIGHT_ICONS = [("弹性", ":material/savings:", "orange"), ("吃喝", ":material/restaurant:", "blue"),
-                 ("最多的一天", ":material/event:", "red"), ("没花", ":material/sentiment_satisfied:", "green")]
+# ---------- 更多发现：每条都能点开看是哪几笔 ----------
+if len(found) > 1:
+    with st.container(border=True):
+        st.markdown("**:material/lightbulb: 还有这些发现**")
+        for i, f in enumerate(found[1:]):
+            with st.container(horizontal=True, vertical_alignment="center"):
+                st.markdown(f":blue[{f['icon']}] {f['text']}")
+                if len(f["rows"]):
+                    if st.button("看看", icon=":material/north_east:", type="tertiary", key=f"find_{i}"):
+                        show_rows(f["text"], f["rows"])
 
-
-def insight_icon(line: str) -> str:
-    icon, color = next(((i, c) for word, i, c in INSIGHT_ICONS if word in line), (":material/lightbulb:", "gray"))
-    return f":{color}[{icon}]"
-
-
-if lines := insights(view):
-    st.markdown("**:material/lightbulb: 小结**")
-    for col, line in zip(st.columns(len(lines), border=True), lines):
-        col.markdown(f"### {insight_icon(line)}\n{line}")
+# ---------- 问一问：看到发现就能接着问 ----------
+with st.expander("问问你的账单", icon=":material/chat:", expanded=True):
+    ask_box(df, app_state.ai_client(), key="dashboard")
 
 
 # ---------- 必要 vs 弹性 ----------

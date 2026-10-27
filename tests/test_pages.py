@@ -23,7 +23,16 @@ def test_page_runs(page):
 def test_app_opens_on_home_page():
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
     assert not at.exception
-    assert at.title[0].value == "账单体检"
+    assert at.title[0].value == "没买什么，钱都花哪儿了？"
+    assert any("小林的 10 月" in c.value for c in at.caption)          # 没导入时用示例数据回答
+    assert any("奶茶" in m.value for m in at.markdown)                  # 默认显示第一个问题的答案
+
+
+def test_home_questions_are_clickable():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
+    next(b for b in at.button if b.label == "哪一天花得最多？").click().run()
+    assert not at.exception
+    assert any("花得最多的一天" in m.value for m in at.markdown)
 
 
 def test_demo_button_goes_to_dashboard():
