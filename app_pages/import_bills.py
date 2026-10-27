@@ -16,6 +16,7 @@ from core.overrides import is_local, is_manually_excluded
 from core.schema import COLUMN_LABELS, empty_table
 
 st.title("导入账单", icon=":material/upload_file:", anchor=False)
+st.caption("导入后会自动去掉退款、自动分类，几秒就好。")
 
 
 def load(files: list[tuple[str, bytes]], use_ai: bool = False):

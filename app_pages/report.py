@@ -20,6 +20,7 @@ from core.qa import METRICS, merchant_candidates, parse_question, pick_merchants
 from core.schema import COLUMN_LABELS
 
 st.title("AI 报告", icon=":material/auto_awesome:", anchor=False)
+st.caption("AI 根据统计数字写月报、给省钱建议；也可以直接问账单问题。")
 df = require_data()
 ai = app_state.ai_client()
 

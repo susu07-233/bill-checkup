@@ -22,6 +22,7 @@ SHOWN_COLUMNS = ["time", "amount", "direction", "counterparty", "item", "categor
                  "platform", "pay_method"]
 
 st.title("交易流水", icon=":material/receipt_long:", anchor=False)
+st.caption("筛选、搜索每一笔交易，按商家或分类看花了多少；分错的可以直接改。")
 df = require_data()
 
 

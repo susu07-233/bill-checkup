@@ -21,6 +21,7 @@ from core.dashboard import (
     insights,
     kpis,
     monthly_by_type,
+    monthly_trend,
     months,
     previous_month,
     top_merchants,
@@ -29,7 +30,11 @@ from core.dashboard import (
 from core.money import yuan
 from core.schema import SPENDING_TYPES
 
-st.title("消费看板", icon=":material/bar_chart:", anchor=False)
+# 标题和时间范围放在同一行：省一行空间，也一眼看到现在看的是哪段时间
+head, picker = st.columns([3, 1], vertical_alignment="bottom")
+with head:
+    st.title("消费看板", icon=":material/bar_chart:", anchor=False)
+    st.caption("一屏看懂钱花在哪，哪些是必须花的、哪些是可以省的。")
 df = require_data()
 
 
@@ -55,10 +60,10 @@ def style(chart: alt.Chart) -> alt.Chart:
             .configure_legend(labelFontSize=12))
 
 
-# ---------- 时间范围 ----------
+# ---------- 时间范围（在标题右边） ----------
 all_months = months(df)
-period = st.selectbox("时间范围", ["全部", *reversed(all_months)], width=200,
-                      format_func=lambda m: m if m == "全部" else f"{m[:4]} 年 {int(m[5:])} 月")
+period = picker.selectbox("时间范围", ["全部", *reversed(all_months)],
+                          format_func=lambda m: "全部时间" if m == "全部" else f"{m[:4]} 年 {int(m[5:])} 月")
 view = df if period == "全部" else in_month(df, period)
 k = kpis(view)
 
@@ -75,22 +80,47 @@ def delta(key: str, percent_points: bool = False):
     return f"{k[key] - pk[key]:+,.2f} 元"
 
 
-# ---------- 关键数字 ----------
-with st.container(horizontal=True):
-    kw = dict(border=True, delta_color="inverse", delta_description=f"比 {int(prev[5:])} 月" if prev else None)
-    st.metric("总支出", yuan(k["支出"]), delta("支出"), **kw)
-    st.metric("日均", yuan(k["日均"]), delta("日均"), help=f"总支出 ÷ {k['天数']} 天", **kw)
-    st.metric("其中吃喝", yuan(k["吃喝"]), delta("吃喝"), help="餐饮 + 零食饮品", **kw)
-    st.metric("弹性支出占比", f"{k['弹性占比']:.0%}", delta("弹性占比", percent_points=True),
-              help="弹性 = 零食饮品、购物、娱乐、社交，是「可以省」的钱；必要 = 餐饮、交通、生活服务、医疗、学习",
-              **kw)
+# ---------- 关键数字（每张卡片下面是逐月趋势小图） ----------
+trend = monthly_trend(df)
+
+
+def spark(column: str):
+    """逐月趋势小图的数据；只有一个月时不画。"""
+    return trend[column].tolist() if len(trend) >= 2 else None
+
+
+# 用固定 4 列：卡片带趋势小图后变宽，用会自动换行的布局时第 4 张会掉到下一行
+c1, c2, c3, c4 = st.columns(4)
+kw = dict(border=True, delta_color="inverse", chart_type="area", height="stretch",
+          delta_description=f"比 {int(prev[5:])} 月" if prev else None)
+c1.metric("总支出", yuan(k["支出"]), delta("支出"), chart_data=spark("支出"),
+          help="下面的小图是每个月的总支出", **kw)
+c2.metric("日均", yuan(k["日均"]), delta("日均"), chart_data=spark("日均"),
+          help=f"总支出 ÷ {k['天数']} 天；小图是每个月的日均", **kw)
+c3.metric("其中吃喝", yuan(k["吃喝"]), delta("吃喝"), chart_data=spark("吃喝"),
+          help="餐饮 + 零食饮品；小图是每个月的吃喝支出", **kw)
+c4.metric("弹性支出占比", f"{k['弹性占比']:.0%}", delta("弹性占比", percent_points=True),
+          chart_data=spark("弹性占比"),
+          help="弹性 = 零食饮品、购物、娱乐、社交，是「可以省」的钱；必要 = 餐饮、交通、生活服务、医疗、学习。"
+               "小图是每个月的弹性占比", **kw)
 
 if period != "全部" and prev is None and any(m < period for m in all_months):
     st.caption("上个月的账单不到 20 天，不做「比上月」，免得得出误导的结论。")
 
+# ---------- 小结：每条结论一张小卡片，配一个图标 ----------
+INSIGHT_ICONS = [("弹性", ":material/savings:", "orange"), ("吃喝", ":material/restaurant:", "blue"),
+                 ("最多的一天", ":material/event:", "red"), ("没花", ":material/sentiment_satisfied:", "green")]
+
+
+def insight_icon(line: str) -> str:
+    icon, color = next(((i, c) for word, i, c in INSIGHT_ICONS if word in line), (":material/lightbulb:", "gray"))
+    return f":{color}[{icon}]"
+
+
 if lines := insights(view):
-    with st.container(border=True):
-        st.markdown("**:material/lightbulb: 小结**\n\n" + "\n".join(f"- {line}" for line in lines))
+    st.markdown("**:material/lightbulb: 小结**")
+    for col, line in zip(st.columns(len(lines), border=True), lines):
+        col.markdown(f"### {insight_icon(line)}\n{line}")
 
 
 # ---------- 必要 vs 弹性 ----------

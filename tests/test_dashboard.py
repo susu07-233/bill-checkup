@@ -113,3 +113,12 @@ def test_excluded_and_income_not_counted(df):
     income_only = df[df["direction"] != "支出"]
     assert kpis(income_only)["支出"] == 0
     assert insights(income_only) == []
+
+
+def test_monthly_trend(df):
+    from core.dashboard import monthly_trend
+    t = monthly_trend(df)
+    assert list(t["month"]) == months(df)
+    assert round(t["支出"].sum(), 2) == kpis(df)["支出"]
+    sept = t.set_index("month").loc["2026-09"]
+    assert sept["吃喝"] == kpis(df[df["time"].dt.month == 9])["吃喝"]

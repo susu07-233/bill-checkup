@@ -78,6 +78,15 @@ def monthly_by_type(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def monthly_trend(df: pd.DataFrame) -> pd.DataFrame:
+    """每个月的关键数字（给数字卡片画趋势小图用）。列：month、支出、日均、吃喝、弹性占比。"""
+    rows = []
+    for m in months(df):
+        k = kpis(in_month(df, m))
+        rows.append({"month": m, "支出": k["支出"], "日均": k["日均"], "吃喝": k["吃喝"], "弹性占比": k["弹性占比"]})
+    return pd.DataFrame(rows, columns=["month", "支出", "日均", "吃喝", "弹性占比"])
+
+
 def weekly_by_type(df: pd.DataFrame) -> pd.DataFrame:
     """每周（周一到周日）必要 / 弹性 / 其他 各花了多少。
 
