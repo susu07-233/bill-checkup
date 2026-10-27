@@ -1,17 +1,22 @@
-"""各个页面共用的「导入数据」操作：解析 → 合并 → 清洗 → 规则分类 →（可选）AI 补全 → 存进 session_state。
+"""各个页面共用的数据操作。
+
+导入：解析 → 合并 → 清洗 → 规则分类 → 套用保存的手动修改 →（可选）AI 补全 → 存进 session_state
+修改：改分类、标记「不计入」、恢复 —— 同时改 session_state 里的表，并保存到 private/手动修改.json
 
 st.session_state 里的约定：
   transactions —— 清洗后的交易表（流水、看板、报告都读它）
-  removed      —— 被排除的记录（带 reason 列）
+  removed      —— 自动排除的记录（带 reason 列）
   ai_result    —— 最近一次 AI 补全的结果说明（给导入页显示）
 """
 
 import pandas as pd
 import streamlit as st
 
+from core import overrides as ov
 from core.ai_classify import DEFAULT_BASE_URL, DEFAULT_MODEL, AIError, ai_classify, make_client
 from core.classify import classify
 from core.clean import clean
+from core.filters import set_category
 from core.parse import parse_bill
 
 
@@ -41,6 +46,8 @@ def load_files(files: list[tuple[str, bytes]], use_ai: bool = False) -> list[str
     if tables:
         kept, removed = clean(pd.concat(tables, ignore_index=True))
         kept = classify(kept)
+        # 手动修改在 AI 之前套用：手动改过分类、标记了不计入的，就不用再问 AI
+        kept = ov.apply_overrides(kept, ov.load_overrides())
         if use_ai:
             kept, st.session_state["ai_result"] = fill_with_ai(kept, ai_settings())
         st.session_state["transactions"] = kept.sort_values("time", ascending=False).reset_index(drop=True)
@@ -61,6 +68,23 @@ def fill_with_ai(df: pd.DataFrame, settings: dict | None, client_factory=make_cl
         return out, ("info", "规则已经全部分好了，不需要 AI。")
     return out, ("success", f"AI 补全了 **{stats.classified} 笔**（问了 {stats.asked} 个不同的商家），"
                             f"约花费 ¥{stats.cost_yuan:.4f}。")
+
+
+def change_category(ids, category: str | None):
+    """手动改分类，并保存下来。"""
+    st.session_state["transactions"] = set_category(st.session_state["transactions"], ids, category)
+    ov.save_overrides(ov.record_category(ov.load_overrides(), ids, category))
+
+
+def set_excluded(ids, excluded: bool):
+    """标记为「不计入」，或者恢复，并保存下来。"""
+    saved = ov.load_overrides()
+    if excluded:
+        df, saved = ov.exclude(st.session_state["transactions"], saved, ids)
+    else:
+        df, saved = ov.restore(st.session_state["transactions"], saved, ids, classify)
+    st.session_state["transactions"] = df
+    ov.save_overrides(saved)
 
 
 def clear():

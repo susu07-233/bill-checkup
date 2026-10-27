@@ -1,16 +1,17 @@
-"""流水页：筛选、搜索交易，在表格里直接改分类。
+"""流水页：筛选、搜索交易，按商家 / 分类汇总，在明细里改分类、标记「不计入」。
 
-改分类的流程：
-  表格里改了某一格 → on_change 回调 → 用这一行的 id 找到原交易 → 改 session_state["transactions"]
-这样换了筛选条件、去了别的页面，改过的分类都不会丢。
+修改的流程：
+  表格里改了某一格 → on_change 回调 → 用这一行的 id 找到原交易 → 改 session_state["transactions"]，
+  同时保存到 private/手动修改.json。换筛选条件、刷新页面、重新导入账单，改动都不会丢。
 """
 
 import streamlit as st
 
-from app_state import load_files
+from app_state import change_category, load_files, set_excluded
 from core.clean import totals
 from core.demo import demo_files
-from core.filters import UNCATEGORIZED, filter_transactions, group_key, set_category, summarize
+from core.filters import UNCATEGORIZED, filter_transactions, group_key, summarize
+from core.overrides import is_manually_excluded
 from core.schema import CATEGORIES, COLUMN_LABELS, DIRECTIONS, PLATFORMS
 
 EDITOR_KEY = "flow_editor"
@@ -133,7 +134,7 @@ if mode in (MODE_MERCHANT, MODE_CATEGORY):
 # ---------- 明细：批量改分类 ----------
 def apply_bulk(ids: list[str]):
     category = st.session_state["bulk_category"]
-    st.session_state["transactions"] = set_category(st.session_state["transactions"], ids, category)
+    change_category(ids, category)
     st.toast(f"已把 {len(ids)} 笔交易设为「{category}」", icon=":material/check:")
 
 
@@ -142,22 +143,26 @@ with st.container(horizontal=True, vertical_alignment="bottom"):
     st.button(f"应用到这 {len(view)} 笔", on_click=apply_bulk, args=(view["id"].tolist(),), icon=":material/done_all:")
 
 
-# ---------- 交易表格（可以直接改「分类」这一列） ----------
+# ---------- 交易表格（可以改「分类」，可以勾选「不计入」） ----------
+CATEGORY_COL, EXCLUDE_COL = COLUMN_LABELS["category"], "不计入"
+
+
 def apply_edits():
-    """表格里改了分类 → 写回 session_state["transactions"]。"""
+    """表格里改了分类或「不计入」→ 写回 session_state["transactions"] 并保存。"""
     edits = st.session_state[EDITOR_KEY]["edited_rows"]   # {行号: {列名: 新值}}
     ids = st.session_state[VIEW_IDS_KEY]
-    data = st.session_state["transactions"]
     for row, change in edits.items():
-        if COLUMN_LABELS["category"] in change:
-            data = set_category(data, [ids[row]], change[COLUMN_LABELS["category"]])
-    st.session_state["transactions"] = data
+        id_ = ids[row]
+        if EXCLUDE_COL in change:
+            set_excluded([id_], change[EXCLUDE_COL])
+        if CATEGORY_COL in change:
+            change_category([id_], change[CATEGORY_COL])
 
 
 table = view[SHOWN_COLUMNS].rename(columns=COLUMN_LABELS).reset_index(drop=True)
+table.insert(2, EXCLUDE_COL, is_manually_excluded(view).to_numpy())
 st.session_state[VIEW_IDS_KEY] = view["id"].tolist()
 
-category_label = COLUMN_LABELS["category"]
 st.data_editor(
     table,
     key=EDITOR_KEY,
@@ -165,16 +170,23 @@ st.data_editor(
     hide_index=True,
     num_rows="fixed",
     placeholder="—",          # 还没分类的格子显示「—」，而不是 None
-    disabled=[c for c in table.columns if c != category_label],
+    disabled=[c for c in table.columns if c not in (CATEGORY_COL, EXCLUDE_COL)],
     column_config={
         "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm", pinned=True),
         "金额": st.column_config.NumberColumn(format="¥%.2f"),
-        category_label: st.column_config.SelectboxColumn(options=CATEGORIES, help="点格子选择分类"),
-        "分类来源": st.column_config.TextColumn(help="规则 / AI / 手动"),
+        EXCLUDE_COL: st.column_config.CheckboxColumn(
+            help="勾上后，这笔不算进支出和收入（比如代付、借钱、垫付）。取消勾选就恢复。"),
+        CATEGORY_COL: st.column_config.SelectboxColumn(options=CATEGORIES, help="点格子选择分类"),
+        "分类来源": st.column_config.TextColumn(help="规则 / AI / 手动 / 手动排除"),
     },
-    alt="交易流水表，可以修改每笔交易的分类",
+    alt="交易流水表，可以修改每笔交易的分类，或者标记为不计入",
 )
-st.caption("双击「分类」那一格就能修改；其他列是账单原始数据，不能改。负数金额是跨月退款。")
+excluded_count = is_manually_excluded(df).sum()
+st.caption(
+    "双击「分类」那一格就能修改；勾选「不计入」，这笔就不算进支出和收入（代付、借钱这类）。"
+    "改动会自动保存，重新导入账单也会保留。点列名可以排序，负数金额是跨月退款。"
+    + (f"　目前手动标记了 **{excluded_count} 笔**不计入。" if excluded_count else "")
+)
 
 st.download_button(
     "下载筛选结果（CSV，可用 Excel 打开）",

@@ -119,6 +119,16 @@ def test_keyword_search():
     assert at.metric[0].value == f"{(df['counterparty'] == '瑞幸咖啡').sum()} 笔"
 
 
+def test_bulk_change_is_saved_for_next_import():
+    from core.overrides import load_overrides
+    at = page_with_demo_data()
+    bulk_set(at, "瑞幸", "其他")
+    df = at.session_state["transactions"]
+    luckin_ids = set(df.loc[df["counterparty"] == "瑞幸咖啡", "id"])
+    saved = load_overrides()
+    assert luckin_ids <= set(saved) and all(saved[i] == {"category": "其他"} for i in luckin_ids)
+
+
 def test_bulk_set_category():
     at = page_with_demo_data()
     before = at.session_state["transactions"].copy()
