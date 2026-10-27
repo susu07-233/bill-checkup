@@ -4,17 +4,24 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
-from app_state import load_files
-from core.demo import demo_files
+from core.filters import summarize
 
 PAGE = str(Path(__file__).parent.parent / "pages" / "2_流水.py")
 
 
 def page_with_demo_data() -> AppTest:
-    at = AppTest.from_file(PAGE)
+    at = AppTest.from_file(PAGE, default_timeout=20)
     at.run()                                     # 第一次运行：没有数据
     at.button[0].click().run()                   # 点「用示例账单试试」
     return at
+
+
+def bulk_set(at: AppTest, keyword: str, category: str):
+    """在「明细」里搜索 keyword，把结果批量设为 category。"""
+    at.segmented_control(key="flow_mode").set_value("明细").run()
+    at.text_input[0].input(keyword).run()
+    at.selectbox(key="bulk_category").select(category).run()
+    next(b for b in at.button if b.label.startswith("应用到")).click().run()
 
 
 def test_empty_state_offers_demo():
@@ -24,27 +31,84 @@ def test_empty_state_offers_demo():
     assert any("示例账单" in b.label for b in at.button)
 
 
-def test_shows_all_income_and_spending_by_default():
+def test_shows_everything_by_default():
     at = page_with_demo_data()
     assert not at.exception
+    assert at.metric[0].value == f"{len(at.session_state['transactions'])} 笔"
+
+
+def test_default_view_is_spending_by_merchant():
+    """苏宇晨的需求：筛选后要能看到每一项花了多少钱。"""
+    at = page_with_demo_data()
+    table = at.dataframe[0].value
+    expected = summarize(at.session_state["transactions"], "counterparty")
+    assert list(table.columns[:4]) == ["商家", "笔数", "支出", "收入"]
+    assert table.iloc[0]["商家"] == expected.iloc[0]["counterparty"]     # 花得最多的商家排第一
+    assert table.iloc[0]["支出"] == expected.iloc[0]["支出"]
+
+
+def test_merchant_summary_follows_filters():
+    at = page_with_demo_data()
+    at.text_input[0].input("瑞幸").run()
+    table = at.dataframe[0].value
     df = at.session_state["transactions"]
-    expected = (df["direction"] != "不计收支").sum()     # 默认只看支出和收入
-    assert at.metric[0].value == f"{expected} 笔"
+    luckin = df[df["counterparty"] == "瑞幸咖啡"]
+    assert list(table["商家"]) == ["瑞幸咖啡"]
+    assert table.iloc[0]["笔数"] == len(luckin)
+    assert table.iloc[0]["支出"] == round(luckin["amount"].sum(), 2)
+
+
+def test_pick_a_merchant_to_see_its_transactions():
+    at = page_with_demo_data()
+    at.selectbox(key="pick_counterparty").select("美团").run()
+    assert not at.exception
+    assert any(h.value.startswith("美团 的") for h in at.subheader)
+    detail = at.dataframe[1].value
+    df = at.session_state["transactions"]
+    assert len(detail) == (df["counterparty"] == "美团").sum()
+    assert set(detail["交易对方"]) == {"美团"}
+
+
+def test_clicking_a_platform_shows_only_that_platform():
+    """苏宇晨测试发现的问题：以前点一个平台是「取消」它，全部取消后又变成显示全部。"""
+    at = page_with_demo_data()
+    at.segmented_control[0].set_value("微信").run()
+    df = at.session_state["transactions"]
+    assert at.metric[0].value == f"{(df['platform'] == '微信').sum()} 笔"
+
+
+def test_clicking_a_direction_shows_only_that_direction():
+    at = page_with_demo_data()
+    at.segmented_control[1].set_value("支出").run()
+    df = at.session_state["transactions"]
+    assert at.metric[0].value == f"{(df['direction'] == '支出').sum()} 笔"
+    assert at.metric[2].value == "¥0.00"                         # 只看支出，收入为 0
+
+
+def test_category_filter_disabled_until_something_is_categorized():
+    """苏宇晨测试发现的问题：还没分类时选任何分类都是 0 笔，让人以为坏了。"""
+    at = page_with_demo_data()
+    assert at.multiselect[0].disabled
+
+    bulk_set(at, "食堂", "餐饮")
+    at.text_input[0].input("").run()
+
+    assert not at.multiselect[0].disabled
+    at.multiselect[0].select("餐饮").run()
+    df = at.session_state["transactions"]
+    assert at.metric[0].value == f"{(df['category'] == '餐饮').sum()} 笔"
 
 
 def test_keyword_search():
     at = page_with_demo_data()
     at.text_input[0].input("瑞幸").run()
     df = at.session_state["transactions"]
-    expected = (df["counterparty"] == "瑞幸咖啡").sum()
-    assert at.metric[0].value == f"{expected} 笔"
+    assert at.metric[0].value == f"{(df['counterparty'] == '瑞幸咖啡').sum()} 笔"
 
 
 def test_bulk_set_category():
     at = page_with_demo_data()
-    at.text_input[0].input("食堂").run()
-    at.selectbox(key="bulk_category").select("餐饮").run()
-    next(b for b in at.button if b.label.startswith("应用到")).click().run()
+    bulk_set(at, "食堂", "餐饮")
 
     assert not at.exception
     df = at.session_state["transactions"]

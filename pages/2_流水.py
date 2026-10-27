@@ -10,11 +10,12 @@ import streamlit as st
 from app_state import load_files
 from core.clean import totals
 from core.demo import demo_files
-from core.filters import UNCATEGORIZED, filter_transactions, set_category
+from core.filters import UNCATEGORIZED, filter_transactions, set_category, summarize
 from core.schema import CATEGORIES, COLUMN_LABELS, DIRECTIONS, PLATFORMS
 
 EDITOR_KEY = "flow_editor"
 VIEW_IDS_KEY = "flow_view_ids"   # 表格里每一行对应的交易 id（回调里用来找到原交易）
+ALL = "全部"
 SHOWN_COLUMNS = ["time", "amount", "direction", "counterparty", "item", "category", "category_source",
                  "platform", "pay_method", "status", "raw_type"]
 
@@ -38,13 +39,28 @@ with st.container(border=True):
     with c2:
         keyword = st.text_input("搜索", placeholder="商家或商品，多个词用空格隔开，比如：美团 外卖")
 
-    c3, c4, c5 = st.columns([1.1, 1.6, 2.3])
+    # 平台、收/支：单选，点哪个就「只看哪个」；required=True 保证不会一个都没选
+    c3, c4, c5 = st.columns([1.1, 1.9, 2])
     with c3:
-        platforms = st.pills("平台", PLATFORMS, selection_mode="multi", default=PLATFORMS)
+        platform = st.segmented_control("平台", [ALL, *PLATFORMS], default=ALL, required=True)
     with c4:
-        directions = st.pills("收/支", DIRECTIONS, selection_mode="multi", default=["支出", "收入"])
+        direction = st.segmented_control("收/支", [ALL, *DIRECTIONS], default=ALL, required=True)
     with c5:
-        categories = st.multiselect("分类", [*CATEGORIES, UNCATEGORIZED], placeholder="全部分类")
+        # 分类：选项后面带上笔数，一眼看出哪些分类还没有交易
+        category_counts = df["category"].fillna(UNCATEGORIZED).replace("", UNCATEGORIZED).value_counts()
+        options = [c for c in [*CATEGORIES, UNCATEGORIZED] if category_counts.get(c, 0) > 0]
+        nothing_categorized = options == [UNCATEGORIZED]
+        categories = st.multiselect(
+            "分类",
+            options,
+            format_func=lambda c: f"{c}（{category_counts.get(c, 0)} 笔）",
+            placeholder="还没有交易分类" if nothing_categorized else "全部分类",
+            disabled=nothing_categorized,
+            help="只列出已经有交易的分类。自动分类会在下一步加上；现在可以在下方表格里手动改分类。",
+        )
+
+platforms = PLATFORMS if platform == ALL else [platform]
+directions = DIRECTIONS if direction == ALL else [direction]
 
 # date_input 选范围时，只点了开始日期会暂时只返回一个值；清空了就是空的
 period = tuple(period) if isinstance(period, (tuple, list)) else (period,)
@@ -61,11 +77,61 @@ with st.container(horizontal=True):
     st.metric("收入", f"¥{t['收入']:,.2f}", border=True)
 
 if view.empty:
-    st.warning("没有符合条件的交易，换个筛选条件试试。")
+    if categories:
+        st.warning("选中的分类在这个时间范围里没有交易，换个分类或时间试试。")
+    else:
+        st.warning("没有符合条件的交易，换个筛选条件试试。")
     st.stop()
 
 
-# ---------- 批量改分类 ----------
+# ---------- 查看方式 ----------
+MODE_MERCHANT, MODE_CATEGORY, MODE_DETAIL = "按商家汇总", "按分类汇总", "明细"
+mode = st.segmented_control(
+    "查看方式", [MODE_MERCHANT, MODE_CATEGORY, MODE_DETAIL], default=MODE_MERCHANT, required=True, key="flow_mode",
+)
+
+if mode in (MODE_MERCHANT, MODE_CATEGORY):
+    by, label = ("counterparty", "商家") if mode == MODE_MERCHANT else ("category", "分类")
+    summary = summarize(view, by).rename(columns={by: label})
+    st.dataframe(
+        summary,
+        hide_index=True,
+        column_config={
+            label: st.column_config.TextColumn(pinned=True),
+            "支出": st.column_config.NumberColumn(format="¥%.2f"),
+            "收入": st.column_config.NumberColumn(format="¥%.2f"),
+            "支出占比": st.column_config.ProgressColumn(format="percent", min_value=0, max_value=1),
+        },
+        alt=f"筛选结果{mode}，每一项的笔数、支出、收入和支出占比",
+    )
+    st.caption(f"共 {len(summary)} 个{label}，按支出从多到少排序。")
+
+    picked = st.selectbox(
+        f"查看某个{label}的每一笔明细",
+        summary[label].tolist(),       # 和上面的表格顺序一致：花得多的在前
+        index=None,
+        placeholder=f"选择{label}…",
+        format_func=lambda x: f"{x}　支出 ¥{summary.set_index(label).loc[x, '支出']:,.2f}",
+        key=f"pick_{by}",
+    )
+    if picked is not None:
+        key = view[by].fillna(UNCATEGORIZED) if by == "category" else view[by]
+        rows = view[key == picked]
+        st.subheader(f"{picked} 的 {len(rows)} 笔明细")
+        st.dataframe(
+            rows[SHOWN_COLUMNS].rename(columns=COLUMN_LABELS),
+            hide_index=True,
+            placeholder="—",
+            column_config={
+                "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
+                "金额": st.column_config.NumberColumn(format="¥%.2f"),
+            },
+            alt=f"{picked} 的交易明细",
+        )
+    st.stop()
+
+
+# ---------- 明细：批量改分类 ----------
 def apply_bulk(ids: list[str]):
     category = st.session_state["bulk_category"]
     st.session_state["transactions"] = set_category(st.session_state["transactions"], ids, category)

@@ -7,7 +7,8 @@ import pytest
 
 from core.clean import clean
 from core.demo import demo_files
-from core.filters import SOURCE_MANUAL, UNCATEGORIZED, filter_transactions, set_category
+from core.clean import totals
+from core.filters import SOURCE_MANUAL, UNCATEGORIZED, filter_transactions, set_category, summarize
 from core.parse import parse_bill
 
 
@@ -59,3 +60,24 @@ def test_set_category_marks_manual_and_keeps_original(df):
 
     cleared = set_category(out, ids, None)
     assert cleared[cleared["id"].isin(ids)]["category"].isna().all()
+
+
+def test_summarize_by_merchant(df):
+    out = summarize(df, "counterparty")
+    assert list(out.columns) == ["counterparty", "笔数", "支出", "收入", "支出占比"]
+    assert out["笔数"].sum() == len(df)
+    assert round(out["支出"].sum(), 2) == totals(df)["支出"]           # 各商家加起来 = 总支出
+    assert round(out["收入"].sum(), 2) == totals(df)["收入"]
+    assert out["支出"].is_monotonic_decreasing                           # 花得最多的排最前
+    assert abs(out["支出占比"].clip(lower=0).sum() - 1) < 1e-9
+
+    canteen = out[out["counterparty"] == "第一食堂"].iloc[0]
+    expected = df[(df["counterparty"] == "第一食堂") & (df["direction"] == "支出")]["amount"].sum()
+    assert canteen["支出"] == round(expected, 2)
+
+
+def test_summarize_by_category_counts_uncategorized(df):
+    labelled = set_category(df, df[df["counterparty"].str.contains("食堂")]["id"], "餐饮")
+    out = summarize(labelled, "category").set_index("category")
+    assert set(out.index) == {"餐饮", UNCATEGORIZED}
+    assert out["笔数"].sum() == len(df)
