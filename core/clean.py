@@ -20,8 +20,9 @@ REASON_CLOSED = "交易关闭或失败"
 REASON_REFUNDED = "已全额退款"
 REASON_REFUND_INCOME = "退款到账（已在原订单扣除）"
 
-# 匹配「已退款(¥30.00)」「已退款（￥30.00）」这类部分退款状态，取出括号里的金额
-_PARTIAL_REFUND = re.compile(r"已退款[(（][¥￥]?([\d,.]+)[)）]")
+# 匹配部分退款状态，取出退回的金额。真实微信账单里两种写法都有：
+#   「已退款(¥30.00)」和「已退款¥30.00」（没有括号）
+_PARTIAL_REFUND = re.compile(r"已退款[(（]?[¥￥]?([\d,]+(?:\.\d+)?)")
 
 
 def _removal_reason(row: pd.Series) -> str | None:

@@ -3,12 +3,14 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from core.clean import (
     REASON_CLOSED,
     REASON_DUPLICATE,
     REASON_REFUND_INCOME,
     REASON_REFUNDED,
+    _refunded_amount,
     clean,
     totals,
 )
@@ -49,6 +51,19 @@ def test_refund_income_removed():
 def test_partial_refund_reduces_amount():
     kept, _ = clean(ALL)
     assert by_id(kept, "wx_4200002026091200006")["amount"] == 50.0   # 80 - 30
+
+
+@pytest.mark.parametrize("status, refunded", [
+    ("已退款(¥30.00)", 30.0),
+    ("已退款（￥30.00）", 30.0),
+    ("已退款¥131.50", 131.5),      # 真实微信账单里的写法：没有括号
+    ("已退款¥1,200.00", 1200.0),
+    ("已全额退款", 0.0),
+    ("已退款", 0.0),
+    ("支付成功", 0.0),
+])
+def test_refunded_amount_formats(status, refunded):
+    assert _refunded_amount(status) == refunded
 
 
 def test_neutral_kept_but_not_counted():
