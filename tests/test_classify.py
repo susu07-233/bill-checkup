@@ -55,7 +55,7 @@ def test_rules_file_saved_by_excel_as_gbk_still_loads(tmp_path):
     (dict(counterparty="第一食堂", item="/"), "餐饮"),
     (dict(counterparty="瑞幸咖啡", item=""), "零食饮品"),
     (dict(counterparty="滴滴出行", item="快车行程"), "交通"),
-    (dict(counterparty="中国移动", item="话费充值"), "生活缴费"),
+    (dict(counterparty="中国移动", item="话费充值"), "生活服务"),
     (dict(counterparty="STEAM", item=""), "娱乐"),          # 不区分大小写
     # 交易类型：转账、红包、AA 都是社交
     (dict(counterparty="阿杰", raw_type="转账"), "社交"),
