@@ -1,0 +1,4 @@
+# Streamlit 项目配置
+[browser]
+# 不向 Streamlit 发送使用统计（项目主打隐私）
+gatherUsageStats = false
