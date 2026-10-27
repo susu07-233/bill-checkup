@@ -15,6 +15,21 @@ PRIVATE = ROOT / "private"
 LABEL_SHEET = PRIVATE / "分类标注表.xlsx"
 
 
+def load_ai_settings() -> dict | None:
+    """读 .streamlit/secrets.toml 里的 DeepSeek 设置；没填 Key 返回 None。"""
+    import tomllib
+    path = ROOT / ".streamlit" / "secrets.toml"
+    if not path.exists():
+        return None
+    secrets = tomllib.loads(path.read_text(encoding="utf-8"))
+    key = str(secrets.get("DEEPSEEK_API_KEY", "")).strip()
+    if not key.startswith("sk-"):
+        return None
+    return {"api_key": key,
+            "base_url": secrets.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+            "model": secrets.get("DEEPSEEK_MODEL", "deepseek-chat")}
+
+
 def load_private_bills() -> pd.DataFrame:
     """读取 private/ 里所有账单（标注表除外），解析 + 清洗。"""
     files = [p for p in sorted(PRIVATE.glob("*")) if p.suffix.lower() in (".csv", ".xlsx") and p != LABEL_SHEET

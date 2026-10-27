@@ -7,7 +7,7 @@
 import pandas as pd
 import streamlit as st
 
-from app_state import clear, load_files
+from app_state import ai_settings, clear, load_files
 from core.classify import coverage
 from core.clean import cross_month_refunds, totals
 from core.demo import demo_files
@@ -17,8 +17,10 @@ st.title("📥 导入账单")
 st.write("支持微信账单（.xlsx）和支付宝账单（.csv），可以一次选多个文件。")
 
 
-def load(files: list[tuple[str, bytes]]):
-    for err in load_files(files):
+def load(files: list[tuple[str, bytes]], use_ai: bool = False):
+    with st.spinner("正在解析、分类…" + ("（AI 补全需要十几秒）" if use_ai else "")):
+        errors = load_files(files, use_ai=use_ai)
+    for err in errors:
         st.error(err)
 
 
@@ -41,10 +43,22 @@ uploaded = st.file_uploader(
     type=["csv", "xlsx"],
     accept_multiple_files=True,
 )
+has_key = ai_settings() is not None
+use_ai = st.toggle(
+    "用 AI 补全规则认不出的分类（DeepSeek）",
+    value=has_key,
+    disabled=not has_key,
+    key="use_ai",
+    help="只把规则认不出的支出的「商家名、商品名」发给 DeepSeek，不发时间、金额、支付方式；"
+         "转账、红包已经由规则分到「社交」，不会发出去。",
+)
+if not has_key:
+    st.caption("还没有设置 DeepSeek API Key：把 Key 填进项目里的 `.streamlit/secrets.toml`，再重启网站就能用。")
+
 col1, col2 = st.columns([1, 4])
 with col1:
     if st.button("开始解析", type="primary", disabled=not uploaded):
-        load([(f.name, f.getvalue()) for f in uploaded])
+        load([(f.name, f.getvalue()) for f in uploaded], use_ai=use_ai)
 with col2:
     if st.button("没有账单？用示例账单试试", help="虚构大学生「小林」半年的微信 + 支付宝账单，所有交易都是编的"):
         load(demo_files())
@@ -68,6 +82,10 @@ m4.metric("时间范围", f"{df['time'].min():%m/%d}–{df['time'].max():%m/%d}"
 
 counts = df["platform"].value_counts()
 st.write("　".join(f"**{k}** {v} 笔" for k, v in counts.items()))
+
+if "ai_result" in st.session_state:
+    level, message = st.session_state["ai_result"]
+    getattr(st, level)(message, icon=":material/smart_toy:")
 
 spend = df[df["direction"] == "支出"]
 unclassified = spend["category"].isna().sum()
