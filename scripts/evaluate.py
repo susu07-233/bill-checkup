@@ -70,6 +70,7 @@ def main():
                     未分类=("pred", lambda s: (s == UNCLASSIFIED).sum()))
                .reindex(CATEGORIES).dropna().astype(int))
     per_cat["准确率"] = (per_cat["分对"] / per_cat["笔数"]).map("{:.0%}".format)
+    per_cat.index.name = "正确分类"
 
     # 分错的类型：正确是 A，规则分成了 B
     wrong = data[~data["correct"] & (data["pred"] != UNCLASSIFIED)]
