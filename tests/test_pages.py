@@ -32,3 +32,16 @@ def test_demo_button_goes_to_dashboard():
     assert not at.exception
     assert len(at.session_state["transactions"]) > 400
     assert at.title[0].value == "消费看板"
+
+
+def test_sidebar_shows_current_data():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
+    assert any("还没有导入账单" in c.value for c in at.sidebar.caption)
+
+    next(b for b in at.button if "示例账单" in b.label).click().run()
+    df = at.session_state["transactions"]
+    assert any(m.value == f"### {len(df)} 笔" for m in at.sidebar.markdown)
+    assert any("示例数据" in c.value for c in at.sidebar.caption)
+
+    next(b for b in at.sidebar.button if b.label == "清空数据").click().run()
+    assert "transactions" not in at.session_state

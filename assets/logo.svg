@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="232" height="56" viewBox="0 0 232 56">
+  <!-- 图标：蓝色圆角方块里一张小票，右下角一个对勾（「账单」+「体检」） -->
+  <rect x="2" y="2" width="52" height="52" rx="13" fill="#2a78d6"/>
+  <path d="M16 12h24v31l-4-3-4 3-4-3-4 3-4-3-4 3z" fill="#ffffff"/>
+  <rect x="21" y="19" width="14" height="3" rx="1.5" fill="#2a78d6"/>
+  <rect x="21" y="26" width="10" height="3" rx="1.5" fill="#86b6ef"/>
+  <circle cx="40" cy="40" r="9" fill="#eb6834" stroke="#2a78d6" stroke-width="3"/>
+  <path d="M35.8 40.2l2.8 2.8 5.2-5.6" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 文字用蓝色：浅色、深色侧边栏上都看得清 -->
+  <text x="66" y="37" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="25" font-weight="700" fill="#2a78d6">账单体检</text>
+</svg>

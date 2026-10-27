@@ -40,19 +40,18 @@ TYPE_COLORS = {NEED: "#3987e5" if DARK else "#2a78d6", FLEX: "#d95926" if DARK e
 # 深浅顺序正确、相邻两档分得清、最浅一档和背景也分得清；没花钱的日子用中性灰，不参与色阶
 HEAT = ["#8a2826", "#c23a37", "#e86a66", "#f5aaa6"] if DARK else ["#f09a95", "#e85d58", "#c22f2c", "#8a1c1b"]
 EMPTY_DAY = "#2c2c2a" if DARK else "#f0efec"
-INK, MUTED, GRID = ("#f0efec", "#898781", "#2c2c2a") if DARK else ("#0b0b0b", "#898781", "#e1e0d9")
 GAP = "#1a1a19" if DARK else "white"          # 相邻色块之间 2px 的缝
 type_scale = alt.Scale(domain=TYPE_ORDER, range=[TYPE_COLORS[t] for t in TYPE_ORDER])
-type_legend = alt.Legend(title=None, orient="top", labelColor=INK)
+type_legend = alt.Legend(title=None, orient="top")   # 文字颜色交给主题，切换深浅色时自动跟着变
 type_order = alt.Order("sort_key:Q")
 SORT_KEY = f"indexof({TYPE_ORDER}, datum.type)"   # 堆叠顺序固定：必要在下、弹性在中、其他在上
 
 
 def style(chart: alt.Chart) -> alt.Chart:
-    """统一的轴、网格样式：网格和轴线淡一些，让数据本身更显眼。"""
+    """统一的轴、图例样式。文字和网格的颜色不写死，交给 Streamlit 主题：
+    这样切换浅色 / 深色时，坐标轴和图例的文字会马上跟着变，不会出现深底深字看不见。"""
     return (chart.configure_view(strokeWidth=0)
-            .configure_axis(labelColor=MUTED, titleColor=MUTED, gridColor=GRID, domainColor=GRID,
-                            tickColor=GRID, labelFontSize=12, titleFontWeight="normal")
+            .configure_axis(labelFontSize=12, titleFontWeight="normal")
             .configure_legend(labelFontSize=12))
 
 

@@ -74,6 +74,8 @@ def load_files(files: list[tuple[str, bytes]], use_ai: bool = False) -> list[str
             kept, st.session_state["ai_result"] = fill_with_ai(kept, ai_settings())
         st.session_state["transactions"] = kept.sort_values("time", ascending=False).reset_index(drop=True)
         st.session_state["removed"] = removed
+        is_demo = all("_示例" in name for name, _ in files)
+        st.session_state["data_source"] = "示例数据（虚构的小林）" if is_demo else "我的账单"
     return errors
 
 
@@ -110,5 +112,5 @@ def set_excluded(ids, excluded: bool):
 
 
 def clear():
-    for key in ("transactions", "removed", "ai_result"):
+    for key in ("transactions", "removed", "ai_result", "data_source", "reports", "qa_cache"):
         st.session_state.pop(key, None)
