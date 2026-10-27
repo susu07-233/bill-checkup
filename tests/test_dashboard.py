@@ -74,12 +74,29 @@ def test_daily_fills_days_without_spending(df):
     assert (d["week"].dt.day_of_week == 0).all()                         # 每周从周一开始
 
 
-def test_insights_mention_key_numbers(df):
+def test_insights_add_what_the_cards_dont_show(df):
     text = " ".join(insights(df))
     k = kpis(df)
-    assert f"{k['支出']:,.2f} 元" in text
+    assert f"{k['支出']:,.2f} 元" not in text                         # 总支出已经在数字卡片里，不重复
     assert f"{k['弹性占比']:.0%}" in text
+    assert "主要在" in text                                           # 弹性最多的分类花在哪几个商家
     assert "花得最多的一天" in text
+
+
+def test_daily_by_type_adds_up(df):
+    from core.dashboard import daily_by_type
+    d = daily_by_type(df)
+    assert round(d["amount"].sum(), 2) == kpis(df)["支出"]
+    shares = d.groupby("date")["share"].sum()
+    spent = d.groupby("date")["amount"].apply(lambda a: a.clip(lower=0).sum()) > 0
+    assert ((shares[spent] - 1).abs() < 1e-9).all()                   # 有花钱的日子，各部分占比加起来是 100%
+    assert (shares[~spent] == 0).all()                                # 只有退款的日子不算占比
+
+
+def test_previous_month(df):
+    from core.dashboard import previous_month
+    assert previous_month(df, "2026-09") == "2026-08"
+    assert previous_month(df, "2026-05") is None
 
 
 def test_excluded_and_income_not_counted(df):

@@ -31,7 +31,7 @@ REASON_REFUND_INCOME = "退款到账（已在原订单扣除）"
 _PARTIAL_REFUND = re.compile(r"已退款[(（]?[¥￥]?([\d,]+(?:\.\d+)?)")
 
 
-def _refunded_amount(status: str) -> float:
+def refunded_amount(status: str) -> float:
     """从「已退款(¥30.00)」里取出 30.0；不是部分退款就返回 0。"""
     match = _PARTIAL_REFUND.search(str(status))
     return float(match.group(1).replace(",", "")) if match else 0.0
@@ -48,7 +48,7 @@ def _refund_total(row: pd.Series) -> float:
     - 原订单（支出）：全额退款 → 它自己的金额；部分退款 → 状态里的金额
     - 退款到账（收入）：状态里写了金额就用它；没写（全额退款）→ 它自己的金额
     """
-    from_status = _refunded_amount(row["status"])
+    from_status = refunded_amount(row["status"])
     return round(from_status if from_status else float(row["amount"]), 2)
 
 
@@ -95,7 +95,7 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     # 4. 部分退款的支出：扣掉退回的金额
     is_spend = kept["direction"] == "支出"
-    refunded = kept["status"].map(_refunded_amount)
+    refunded = kept["status"].map(refunded_amount)
     kept.loc[is_spend, "amount"] = (kept.loc[is_spend, "amount"] - refunded[is_spend]).round(2)
 
     # 5b. 跨月退款：变成负的支出，抵扣本月支出

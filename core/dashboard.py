@@ -33,6 +33,16 @@ def months(df: pd.DataFrame) -> list[str]:
     return sorted(spending(df)["month"].unique())
 
 
+def in_month(df: pd.DataFrame, month: str) -> pd.DataFrame:
+    return df[df["time"].dt.strftime("%Y-%m") == month]
+
+
+def previous_month(df: pd.DataFrame, month: str) -> str | None:
+    """账单里 month 的上一个月；没有就返回 None。"""
+    earlier = [m for m in months(df) if m < month]
+    return earlier[-1] if earlier else None
+
+
 def kpis(df: pd.DataFrame) -> dict:
     """总支出、日均、吃喝、必要 / 弹性 / 其他 各多少、弹性占比。"""
     s = spending(df)
@@ -55,6 +65,16 @@ def monthly_by_type(df: pd.DataFrame) -> pd.DataFrame:
     s = spending(df)
     out = s.groupby(["month", "type"], as_index=False)["amount"].sum()
     out["amount"] = out["amount"].round(2)
+    return out
+
+
+def daily_by_type(df: pd.DataFrame) -> pd.DataFrame:
+    """每天 必要 / 弹性 / 其他 各花了多少。列：date, type, amount, share（占当天的比例）。"""
+    s = spending(df)
+    out = s.groupby(["date", "type"], as_index=False)["amount"].sum()
+    out["amount"] = out["amount"].round(2)
+    day_total = out.groupby("date")["amount"].transform(lambda a: a.clip(lower=0).sum())
+    out["share"] = (out["amount"].clip(lower=0) / day_total).where(day_total > 0, 0.0)
     return out
 
 
@@ -96,17 +116,19 @@ def insights(df: pd.DataFrame) -> list[str]:
     if s.empty:
         return []
     k = kpis(df)
-    lines = [f"这段时间一共支出 **{yuan(k['支出'])}**，平均每天 {yuan(k['日均'])}。"]
+    lines = []   # 总支出、日均已经在上面的数字卡片里，这里只写卡片看不出来的结论
 
     cats = by_category(df)
     flex = cats[cats["type"] == FLEX]
     if k["支出"] > 0 and not flex.empty:
         top = flex.iloc[0]
         compare = "比必要支出还多" if k[FLEX] > k[NEED] else "少于必要支出"
-        lines.append(f"弹性支出 {yuan(k[FLEX])}，占 **{k['弹性占比']:.0%}**，{compare}；"
-                     f"其中最多的是「{top['category']}」{yuan(top['amount'])}。")
-    if k["吃喝"] > 0:
-        lines.append(f"吃喝一共 {yuan(k['吃喝'])}，占总支出的 {k['吃喝'] / k['支出']:.0%}。")
+        merchants = top_merchants(df[df["category"] == top["category"]], 3)
+        where = "、".join(merchants["counterparty"])
+        lines.append(f"弹性支出占 **{k['弹性占比']:.0%}**，{compare}；最多的是「{top['category']}」"
+                     f"{yuan(top['amount'])}，主要在 {where}。")
+    if k["吃喝"] > 0 and k["支出"] > 0:
+        lines.append(f"吃喝占总支出的 {k['吃喝'] / k['支出']:.0%}。")
 
     d = daily(df)
     peak = d.loc[d["amount"].idxmax()]

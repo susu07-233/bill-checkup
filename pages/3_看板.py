@@ -1,6 +1,6 @@
 """看板页：一屏看懂钱花在哪。重点是「必要 / 弹性」（产品决策 Q13）。
 
-颜色：必要 = 蓝、弹性 = 橙、其他 = 灰（用 dataviz 规范的默认配色，已用校验脚本检查过色盲可分辨）；
+颜色：必要 = 蓝、弹性 = 橙、其他 = 灰（dataviz 规范的默认配色，已用校验脚本检查过色盲可分辨）；
 深色模式换成同色系的深色版本。每张图都有鼠标悬停提示。
 """
 
@@ -8,7 +8,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from app_state import load_files
+from app_state import require_data
 from core.dashboard import (
     FLEX,
     NEED,
@@ -16,25 +16,21 @@ from core.dashboard import (
     TYPE_ORDER,
     by_category,
     daily,
+    daily_by_type,
+    in_month,
     insights,
     kpis,
     monthly_by_type,
     months,
+    previous_month,
     top_merchants,
 )
-from core.demo import demo_files
 from core.money import yuan
+from core.schema import SPENDING_TYPES
 
 st.set_page_config(page_title="看板 · 账单体检", page_icon="📊", layout="wide")
 st.title("📊 消费看板")
-
-df = st.session_state.get("transactions")
-if df is None or df.empty:
-    st.info("还没有导入数据。在左侧点「导入」上传账单，或者直接用示例账单看看效果。")
-    if st.button("用示例账单试试", icon=":material/science:"):
-        load_files(demo_files())
-        st.rerun()
-    st.stop()
+df = require_data()
 
 
 # ---------- 配色（浅色 / 深色） ----------
@@ -44,8 +40,11 @@ TYPE_COLORS = {NEED: "#3987e5" if DARK else "#2a78d6", FLEX: "#d95926" if DARK e
 HEAT = ["#184f95", "#2a78d6", "#6da7ec", "#b7d3f6"] if DARK else ["#cde2fb", "#86b6ef", "#3987e5", "#184f95"]
 EMPTY_DAY = "#2c2c2a" if DARK else "#f0efec"
 INK, MUTED, GRID = ("#f0efec", "#898781", "#2c2c2a") if DARK else ("#0b0b0b", "#898781", "#e1e0d9")
+GAP = "#1a1a19" if DARK else "white"          # 相邻色块之间 2px 的缝
 type_scale = alt.Scale(domain=TYPE_ORDER, range=[TYPE_COLORS[t] for t in TYPE_ORDER])
 type_legend = alt.Legend(title=None, orient="top", labelColor=INK)
+type_order = alt.Order("sort_key:Q")
+SORT_KEY = f"indexof({TYPE_ORDER}, datum.type)"   # 堆叠顺序固定：必要在下、弹性在中、其他在上
 
 
 def style(chart: alt.Chart) -> alt.Chart:
@@ -60,23 +59,35 @@ def style(chart: alt.Chart) -> alt.Chart:
 all_months = months(df)
 period = st.selectbox("时间范围", ["全部", *reversed(all_months)], width=200,
                       format_func=lambda m: m if m == "全部" else f"{m[:4]} 年 {int(m[5:])} 月")
-view = df if period == "全部" else df[df["time"].dt.strftime("%Y-%m") == period]
+view = df if period == "全部" else in_month(df, period)
 k = kpis(view)
+
+# 选了某个月、并且账单里有上个月：数字卡片显示「比上月」
+prev = previous_month(df, period) if period != "全部" else None
+pk = kpis(in_month(df, prev)) if prev else None
+
+
+def delta(key: str, percent_points: bool = False):
+    if pk is None:
+        return None
+    if percent_points:
+        return f"{(k[key] - pk[key]) * 100:+.0f} 个百分点"
+    return f"{k[key] - pk[key]:+,.2f} 元"
 
 
 # ---------- 关键数字 ----------
 with st.container(horizontal=True):
-    st.metric("总支出", yuan(k["支出"]), border=True)
-    st.metric("日均", yuan(k["日均"]), border=True, help=f"总支出 ÷ {k['天数']} 天")
-    st.metric("其中吃喝", yuan(k["吃喝"]), border=True, help="餐饮 + 零食饮品")
-    st.metric("弹性支出占比", f"{k['弹性占比']:.0%}", border=True,
-              help="弹性 = 零食饮品、购物、娱乐、社交，是「可以省」的钱；"
-                   "必要 = 餐饮、交通、生活服务、医疗、学习")
+    kw = dict(border=True, delta_color="inverse", delta_description=f"比 {int(prev[5:])} 月" if prev else None)
+    st.metric("总支出", yuan(k["支出"]), delta("支出"), **kw)
+    st.metric("日均", yuan(k["日均"]), delta("日均"), help=f"总支出 ÷ {k['天数']} 天", **kw)
+    st.metric("其中吃喝", yuan(k["吃喝"]), delta("吃喝"), help="餐饮 + 零食饮品", **kw)
+    st.metric("弹性支出占比", f"{k['弹性占比']:.0%}", delta("弹性占比", percent_points=True),
+              help="弹性 = 零食饮品、购物、娱乐、社交，是「可以省」的钱；必要 = 餐饮、交通、生活服务、医疗、学习",
+              **kw)
 
-with st.container(border=True):
-    st.markdown("**:material/lightbulb: 小结**")
-    for line in insights(view):
-        st.markdown(f"- {line}")
+if lines := insights(view):
+    with st.container(border=True):
+        st.markdown("**:material/lightbulb: 小结**\n\n" + "\n".join(f"- {line}" for line in lines))
 
 
 # ---------- 必要 vs 弹性 ----------
@@ -86,15 +97,15 @@ with left, st.container(border=True, height="stretch"):
     shares = pd.DataFrame({"type": TYPE_ORDER, "amount": [max(k[t], 0) for t in TYPE_ORDER]})
     shares = shares[shares["amount"] > 0]
     shares["share"] = shares["amount"] / shares["amount"].sum()
-    shares["label"] = shares.apply(lambda r: f"{r['type']} {r['share']:.0%}", axis=1)
+    # 色块太窄放不下文字时不写字（窗口变窄时「其他 12%」会被挤出去），具体比例看下面的文字和悬停提示
+    shares["label"] = shares.apply(lambda r: f"{r['type']} {r['share']:.0%}" if r["share"] >= 0.22 else "", axis=1)
     shares["tip"] = shares["amount"].map(yuan)
     base = alt.Chart(shares).encode(
-        x=alt.X("amount:Q", stack="normalize", axis=None),
-        order=alt.Order("sort_key:Q"),
+        x=alt.X("amount:Q", stack="normalize", axis=None), order=type_order,
         tooltip=[alt.Tooltip("type:N", title="类型"), alt.Tooltip("tip:N", title="金额"),
                  alt.Tooltip("share:Q", title="占比", format=".0%")],
-    ).transform_calculate(sort_key=f"indexof({TYPE_ORDER}, datum.type)")
-    bar = base.mark_bar(height=44, cornerRadius=4, stroke="white" if not DARK else "#1a1a19", strokeWidth=2).encode(
+    ).transform_calculate(sort_key=SORT_KEY)
+    bar = base.mark_bar(height=44, cornerRadius=4, stroke=GAP, strokeWidth=2).encode(
         color=alt.Color("type:N", scale=type_scale, legend=None))
     labels = base.mark_text(align="center", color="white", fontSize=13, fontWeight="bold").encode(
         x=alt.X("mid:Q", axis=None), text="label:N",
@@ -102,61 +113,76 @@ with left, st.container(border=True, height="stretch"):
                       offset="normalize").transform_calculate(mid="(datum.lo + datum.hi) / 2")
     st.altair_chart(style((bar + labels).properties(height=60)), width="stretch",
                     alt=f"必要支出占 {k[NEED] / k['支出']:.0%}，弹性支出占 {k['弹性占比']:.0%}" if k["支出"] else "没有支出")
-    for t in (NEED, FLEX):
-        cats = by_category(view)
-        cats = cats[cats["type"] == t]
-        detail = "、".join(f"{c} {yuan(a, 0)}" for c, a in zip(cats["category"], cats["amount"]))
-        st.markdown(f":{'blue' if t == NEED else 'orange'}[**{t} {yuan(k[t])}**]  \n{detail or '—'}")
+    # 各分类具体多少钱在下面「各分类支出」图里，这里只列包含哪些分类，避免重复
+    for t, color in ((NEED, "blue"), (FLEX, "orange")):
+        share = k[t] / k["支出"] if k["支出"] else 0
+        st.markdown(f":{color}[**{t} {yuan(k[t])}**]　{share:.0%}  \n"
+                    f":gray[{'、'.join(SPENDING_TYPES[t])}]")
     if k[OTHER]:
-        st.caption(f"其他 / 未分类 {yuan(k[OTHER])}，没有算进必要或弹性。")
+        st.caption(f"其他 / 未分类 {yuan(k[OTHER])}（{k[OTHER] / k['支出']:.0%}），不算必要或弹性。")
 
 with right, st.container(border=True, height="stretch"):
     st.markdown("**每月支出**")
-    monthly = monthly_by_type(df if period == "全部" else df[df["time"].dt.strftime("%Y-%m").isin([period])])
-    if monthly["month"].nunique() < 2 and period == "全部":
-        st.caption("只有一个月的数据，导入更多月份后就能看到变化趋势。")
+    monthly = monthly_by_type(view)
+    if monthly["month"].nunique() < 2:
+        st.caption("只有一个月的数据，导入更多月份后就能看到变化。")
     monthly["月份"] = monthly["month"].map(lambda m: f"{int(m[5:])} 月")
     monthly["tip"] = monthly["amount"].map(yuan)
     chart = alt.Chart(monthly).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=28,
-                                        stroke="white" if not DARK else "#1a1a19", strokeWidth=2).encode(
+                                        stroke=GAP, strokeWidth=2).encode(
         x=alt.X("月份:N", sort=None, title=None, axis=alt.Axis(labelAngle=0)),
         y=alt.Y("sum(amount):Q", title="元", axis=alt.Axis(format=",.0f", tickCount=5)),
-        color=alt.Color("type:N", scale=type_scale, legend=type_legend),
-        order=alt.Order("sort_key:Q"),
+        color=alt.Color("type:N", scale=type_scale, legend=type_legend), order=type_order,
         tooltip=[alt.Tooltip("月份:N"), alt.Tooltip("type:N", title="类型"), alt.Tooltip("tip:N", title="金额")],
-    ).transform_calculate(sort_key=f"indexof({TYPE_ORDER}, datum.type)").properties(height=280)
+    ).transform_calculate(sort_key=SORT_KEY).properties(height=280)
     st.altair_chart(style(chart), width="stretch", alt="每月支出，按必要、弹性、其他分段")
 
 
-# ---------- 分类 & 商家 ----------
-left, right = st.columns(2)
-with left, st.container(border=True, height="stretch"):
-    st.markdown("**各分类支出**")
-    cats = by_category(view)
-    cats = cats[cats["amount"] > 0]
-    cats["tip"] = cats["amount"].map(yuan)
-    chart = alt.Chart(cats).mark_bar(cornerRadiusEnd=4).encode(
-        y=alt.Y("category:N", sort="-x", title=None, scale=alt.Scale(paddingInner=0.35)),
-        x=alt.X("amount:Q", title="元", axis=alt.Axis(format=",.0f", tickCount=4)),
-        color=alt.Color("type:N", scale=type_scale, legend=type_legend),
-        tooltip=[alt.Tooltip("category:N", title="分类"), alt.Tooltip("type:N", title="类型"),
-                 alt.Tooltip("tip:N", title="金额"), alt.Tooltip("count:Q", title="笔数")],
-    ).properties(height=alt.Step(28))           # 每一行固定 28 像素高，分类多了图就自动变高
-    st.altair_chart(style(chart), width="stretch", alt="各分类支出，从多到少，颜色表示必要或弹性")
+# ---------- 每日支出（苏宇晨的需求：看每天的花费和占比） ----------
+with st.container(border=True):
+    head, switch = st.columns([3, 2], vertical_alignment="center")
+    head.markdown("**每日支出**")
+    show = switch.segmented_control("显示", ["金额", "占比"], default="金额", required=True,
+                                    key="daily_mode", label_visibility="collapsed", width="content")
+    days = daily_by_type(view)
+    days["tip"] = days["amount"].map(yuan)
+    as_share = show == "占比"
+    chart = alt.Chart(days).mark_bar(stroke=GAP, strokeWidth=1 if len(days) > 120 else 2).encode(
+        x=alt.X("yearmonthdate(date):T", title=None, axis=alt.Axis(format="%m/%d", labelAngle=0, grid=False)),
+        y=alt.Y("amount:Q", stack="normalize" if as_share else True, title=None if as_share else "元",
+                axis=alt.Axis(format=".0%" if as_share else ",.0f", tickCount=5)),
+        color=alt.Color("type:N", scale=type_scale, legend=type_legend), order=type_order,
+        tooltip=[alt.Tooltip("yearmonthdate(date):T", title="日期", format="%Y-%m-%d"),
+                 alt.Tooltip("type:N", title="类型"), alt.Tooltip("tip:N", title="金额"),
+                 alt.Tooltip("share:Q", title="占当天", format=".0%")],
+    ).transform_calculate(sort_key=SORT_KEY).properties(height=240)
+    st.altair_chart(style(chart), width="stretch",
+                    alt="每天的支出，按必要、弹性、其他分段" + ("，显示每天的占比" if as_share else ""))
+    st.caption("切到「占比」看每天的钱里必要和弹性各占多少；鼠标移到柱子上看具体金额。")
 
-with right, st.container(border=True, height="stretch"):
-    st.markdown("**花钱最多的 10 个商家**")
-    top = top_merchants(view, 10)
-    top["tip"] = top["amount"].map(yuan)
-    chart = alt.Chart(top).mark_bar(cornerRadiusEnd=4).encode(
-        y=alt.Y("counterparty:N", sort="-x", title=None, axis=alt.Axis(labelLimit=150),
+
+# ---------- 分类 & 商家 ----------
+def ranking(data: pd.DataFrame, field: str, name: str, alt_text: str):
+    """横向条形图：从多到少，颜色表示必要 / 弹性。每行固定 28 像素高，项目多了图就自动变高。"""
+    data = data[data["amount"] > 0].assign(tip=lambda d: d["amount"].map(yuan))
+    chart = alt.Chart(data).mark_bar(cornerRadiusEnd=4).encode(
+        y=alt.Y(f"{field}:N", sort="-x", title=None, axis=alt.Axis(labelLimit=150),
                 scale=alt.Scale(paddingInner=0.35)),
         x=alt.X("amount:Q", title="元", axis=alt.Axis(format=",.0f", tickCount=4)),
         color=alt.Color("type:N", scale=type_scale, legend=type_legend),
-        tooltip=[alt.Tooltip("counterparty:N", title="商家"), alt.Tooltip("tip:N", title="金额"),
-                 alt.Tooltip("count:Q", title="笔数")],
+        tooltip=[alt.Tooltip(f"{field}:N", title=name), alt.Tooltip("type:N", title="类型"),
+                 alt.Tooltip("tip:N", title="金额"), alt.Tooltip("count:Q", title="笔数")],
     ).properties(height=alt.Step(28))
-    st.altair_chart(style(chart), width="stretch", alt="花钱最多的 10 个商家")
+    st.altair_chart(style(chart), width="stretch", alt=alt_text)
+
+
+left, right = st.columns(2)
+with left, st.container(border=True, height="stretch"):
+    st.markdown("**各分类支出**")
+    ranking(by_category(view), "category", "分类", "各分类支出，从多到少，颜色表示必要或弹性")
+with right, st.container(border=True, height="stretch"):
+    st.markdown("**花钱最多的 10 个商家**")
+    ranking(top_merchants(view, 10), "counterparty", "商家", "花钱最多的 10 个商家")
 
 
 # ---------- 消费日历 ----------
@@ -166,10 +192,12 @@ with st.container(border=True):
     cal["星期"] = cal["weekday"].map(lambda d: "一二三四五六日"[d]).radd("周")
     cal["周"] = cal["week"].dt.strftime("%m/%d")              # 每一周一列，用这周周一的日期做标签
     cal["tip"] = cal["amount"].map(yuan)
+    weeks = sorted(cal["周"].unique(), key=lambda s: cal.loc[cal["周"] == s, "week"].iloc[0])
     cap = max(float(cal["amount"].quantile(0.95)), 1.0)       # 极端大额不把颜色拉爆
-    chart = alt.Chart(cal).mark_rect(cornerRadius=3, stroke="white" if not DARK else "#1a1a19", strokeWidth=2).encode(
-        x=alt.X("周:O", sort=sorted(cal["周"].unique(), key=lambda s: cal.loc[cal["周"] == s, "week"].iloc[0]),
-                title=None, axis=alt.Axis(labelAngle=-45 if cal["周"].nunique() > 12 else 0, labelOverlap=True)),
+    few_weeks = len(weeks) <= 16                              # 周数少时格子固定大小，不拉成长条
+    chart = alt.Chart(cal).mark_rect(cornerRadius=3, stroke=GAP, strokeWidth=2).encode(
+        x=alt.X("周:O", sort=weeks, title=None,
+                axis=alt.Axis(labelAngle=0 if few_weeks else -45, labelOverlap=True)),
         y=alt.Y("星期:N", sort=[f"周{d}" for d in "一二三四五六日"], title=None),
         color=alt.condition(
             "datum.amount <= 0",
@@ -179,6 +207,6 @@ with st.container(border=True):
         ),
         tooltip=[alt.Tooltip("date:T", title="日期", format="%Y-%m-%d"), alt.Tooltip("星期:N"),
                  alt.Tooltip("tip:N", title="支出")],
-    ).properties(height=210)
-    st.altair_chart(style(chart), width="stretch", alt="每天的支出，颜色越深花得越多")
-    st.caption("蓝色越深花得越多，灰色是一分钱没花的日子；横轴是每周的周一。鼠标移到格子上可以看具体金额。")
+    ).properties(height=alt.Step(26), **({"width": alt.Step(44)} if few_weeks else {}))
+    st.altair_chart(style(chart), width="content" if few_weeks else "stretch", alt="每天的支出，颜色越深花得越多")
+    st.caption("颜色越深花得越多，灰色是没花钱的日子，能看出一周里哪几天最费钱。")

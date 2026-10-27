@@ -10,7 +10,7 @@ from core.clean import (
     REASON_DUPLICATE,
     REASON_REFUND_INCOME,
     REASON_REFUNDED,
-    _refunded_amount,
+    refunded_amount,
     clean,
     cross_month_refunds,
     totals,
@@ -93,8 +93,8 @@ def test_split_refund_matches_original_total():
     ("已退款", 0.0),
     ("支付成功", 0.0),
 ])
-def test_refunded_amount_formats(status, refunded):
-    assert _refunded_amount(status) == refunded
+def testrefunded_amount_formats(status, refunded):
+    assert refunded_amount(status) == refunded
 
 
 def test_totals():

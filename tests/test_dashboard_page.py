@@ -32,14 +32,23 @@ def test_dashboard_renders_with_demo_data():
     k = kpis(at.session_state["transactions"])
     assert metric(at, "总支出") == f"{k['支出']:,.2f} 元"
     assert metric(at, "弹性支出占比") == f"{k['弹性占比']:.0%}"
-    assert len(at.get("vega_lite_chart")) == 5                       # 必要/弹性、每月、分类、商家、日历
+    assert len(at.get("vega_lite_chart")) == 6                       # 必要/弹性、每月、每日、分类、商家、日历
     assert any("花得最多的一天" in m.value for m in at.markdown)
 
 
-def test_pick_a_month():
+def test_daily_chart_share_mode():
+    at = page_with_demo_data()
+    at.segmented_control(key="daily_mode").set_value("占比").run()
+    assert not at.exception
+
+
+def test_pick_a_month_shows_change_vs_last_month():
     at = page_with_demo_data()
     at.selectbox[0].select("2026-09").run()
     assert not at.exception
     df = at.session_state["transactions"]
-    sept = df[df["time"].dt.strftime("%Y-%m") == "2026-09"]
-    assert metric(at, "总支出") == f"{kpis(sept)['支出']:,.2f} 元"
+    month = lambda m: df[df["time"].dt.strftime("%Y-%m") == m]
+    sept, aug = kpis(month("2026-09")), kpis(month("2026-08"))
+    total = next(m for m in at.metric if m.label == "总支出")
+    assert total.value == f"{sept['支出']:,.2f} 元"
+    assert total.delta == f"{sept['支出'] - aug['支出']:+,.2f} 元"

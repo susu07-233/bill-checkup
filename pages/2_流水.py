@@ -7,29 +7,22 @@
 
 import streamlit as st
 
-from app_state import change_category, load_files, set_excluded
-from core.money import YUAN_COLUMN_FORMAT, yuan
+from app_state import change_category, require_data, set_excluded
 from core.clean import totals
-from core.demo import demo_files
 from core.filters import UNCATEGORIZED, filter_transactions, group_key, group_spending, summarize
+from core.money import YUAN_COLUMN_FORMAT, yuan
 from core.overrides import is_manually_excluded
 from core.schema import CATEGORIES, COLUMN_LABELS, DIRECTIONS, PLATFORMS
 
 EDITOR_KEY = "flow_editor"
 VIEW_IDS_KEY = "flow_view_ids"   # 表格里每一行对应的交易 id（回调里用来找到原交易）
 ALL = "全部"
+# 账单原始的「状态」「平台分类」平时用不到，不显示，表格更清爽
 SHOWN_COLUMNS = ["time", "amount", "direction", "counterparty", "item", "category", "category_source",
-                 "platform", "pay_method", "status", "raw_type"]
+                 "platform", "pay_method"]
 
 st.title("📋 交易流水")
-
-df = st.session_state.get("transactions")
-if df is None or df.empty:
-    st.info("还没有导入数据。在左侧点「导入」上传账单，或者直接用示例账单看看效果。")
-    if st.button("用示例账单试试", icon=":material/science:"):
-        load_files(demo_files())
-        st.rerun()
-    st.stop()
+df = require_data()
 
 
 # ---------- 筛选 ----------
@@ -99,8 +92,7 @@ if mode in (MODE_MERCHANT, MODE_CATEGORY):
     by, label = ("counterparty", "商家") if mode == MODE_MERCHANT else ("category", "分类")
     if mode == MODE_CATEGORY and st.toggle("合并成大类（吃喝 = 餐饮 + 零食饮品）", value=True, key="merge_groups"):
         by, label = "group", "大类"
-        st.caption(f"吃喝 {yuan(food['吃喝'])} = 餐饮 {yuan(food['餐饮'])} + 零食饮品 {yuan(food['零食饮品'])}。"
-                   "关掉开关可以看细分。")
+        st.caption(f"吃喝 = 餐饮 {yuan(food['餐饮'])} + 零食饮品 {yuan(food['零食饮品'])}")
     summary = summarize(view, by).rename(columns={by: label})
     st.dataframe(
         summary,
@@ -113,7 +105,6 @@ if mode in (MODE_MERCHANT, MODE_CATEGORY):
         },
         alt=f"筛选结果{mode}，每一项的笔数、支出、收入和支出占比",
     )
-    st.caption(f"共 {len(summary)} 个{label}，按支出从多到少排序。")
 
     picked = st.selectbox(
         f"查看某个{label}的每一笔明细",
@@ -191,9 +182,8 @@ st.data_editor(
 )
 excluded_count = is_manually_excluded(df).sum()
 st.caption(
-    "双击「分类」那一格就能修改；勾选「不计入」，这笔就不算进支出和收入（代付、借钱这类）。"
-    "改动会自动保存，重新导入账单也会保留。点列名可以排序，负数金额是跨月退款。"
-    + (f"　目前手动标记了 **{excluded_count} 笔**不计入。" if excluded_count else "")
+    "双击「分类」修改；代付、借钱这类勾选「不计入」。改动自动保存。"
+    + (f"已标记 **{excluded_count} 笔**不计入。" if excluded_count else "")
 )
 
 st.download_button(

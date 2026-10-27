@@ -1,4 +1,4 @@
-"""导入页：上传账单文件 → 解析 → 清洗 → 预览。
+"""导入页：上传账单文件 → 解析 → 清洗 → 分类，然后给一份「导入报告」：导入了多少、自动处理了什么。
 
 清洗后的交易表存在 st.session_state["transactions"] 里，其他页面从这里读取；
 被排除的记录存在 st.session_state["removed"] 里，方便核对。
@@ -8,10 +8,11 @@ import pandas as pd
 import streamlit as st
 
 from app_state import ai_settings, clear, load_files
-from core.money import YUAN_COLUMN_FORMAT, yuan
 from core.classify import coverage
-from core.clean import cross_month_refunds, totals
+from core.clean import refunded_amount, cross_month_refunds
 from core.demo import demo_files
+from core.money import YUAN_COLUMN_FORMAT, yuan
+from core.overrides import is_manually_excluded
 from core.schema import COLUMN_LABELS, empty_table
 
 st.title("📥 导入账单")
@@ -23,19 +24,6 @@ def load(files: list[tuple[str, bytes]], use_ai: bool = False):
         errors = load_files(files, use_ai=use_ai)
     for err in errors:
         st.error(err)
-
-
-def show_table(df: pd.DataFrame, extra_columns: dict | None = None):
-    """用中文列名显示交易表。"""
-    st.dataframe(
-        df.drop(columns=["category", "category_source"]).rename(columns={**COLUMN_LABELS, **(extra_columns or {})}),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "金额": st.column_config.NumberColumn(format=YUAN_COLUMN_FORMAT),
-            "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
-        },
-    )
 
 
 # ---------- 上传区 ----------
@@ -64,51 +52,60 @@ with col2:
     if st.button("没有账单？用示例账单试试", help="虚构大学生「小林」半年的微信 + 支付宝账单，所有交易都是编的"):
         load(demo_files())
 
-# ---------- 结果预览 ----------
+# ---------- 导入报告 ----------
+# 只说「导入时做了什么」；金额统计在「看板」，每一笔在「流水」，这里不重复
 df = st.session_state.get("transactions", empty_table())
 removed = st.session_state.get("removed", pd.DataFrame())
 if df.empty:
-    st.info("还没有导入数据。")
     st.stop()
 
 st.divider()
-st.subheader("解析结果")
-
-t = totals(df)
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("有效交易", f"{len(df)} 笔")
-m2.metric("支出", f"{yuan(t['支出'])}")
-m3.metric("收入", f"{yuan(t['收入'])}")
-m4.metric("时间范围", f"{df['time'].min():%m/%d}–{df['time'].max():%m/%d}")
-
-counts = df["platform"].value_counts()
-st.write("　".join(f"**{k}** {v} 笔" for k, v in counts.items()))
+counts = "、".join(f"{k} {v} 笔" for k, v in df["platform"].value_counts().items())
+st.subheader(f"导入了 {len(df)} 笔交易")
+st.caption(f"{counts}；{df['time'].min():%Y-%m-%d} 至 {df['time'].max():%Y-%m-%d}")
 
 if "ai_result" in st.session_state:
     level, message = st.session_state["ai_result"]
     getattr(st, level)(message, icon=":material/smart_toy:")
 
-spend = df[df["direction"] == "支出"]
-unclassified = spend["category"].isna().sum()
-if unclassified:
-    st.write(f":material/category: 自动分类：支出里 **{coverage(df):.0%}** 已分类，"
-             f"还有 **{unclassified} 笔**没认出来，可以在「流水」页手动改。")
-else:
-    st.write(":material/category: 自动分类：所有支出都已分类，可以在「流水」页查看和修改。")
-notes = ["「不计收支」的记录（充值、理财、余额宝转入等）保留在表里，但不算进支出和收入", "部分退款已自动扣除"]
-refunds = cross_month_refunds(df)
-if not refunds.empty:
-    notes.append(f"{len(refunds)} 笔跨月退款（原订单不在这份账单里）已抵扣本月支出 {yuan(-refunds['amount'].sum())}")
-st.caption("；".join(notes) + "。")
-
-show_table(df)
+with st.container(border=True):
+    st.markdown("**自动处理**")
+    spend = df[df["direction"] == "支出"]
+    source = spend["category_source"].value_counts()
+    unclassified = int(spend["category"].isna().sum())
+    parts = [f"规则 {source.get('规则', 0)} 笔", f"AI {source.get('AI', 0)} 笔", f"手动 {source.get('手动', 0)} 笔"]
+    lines = [f":material/category: **分类**：{len(spend)} 笔支出，{coverage(df):.0%} 已分类（"
+             + "、".join(p for p in parts if not p.endswith(" 0 笔")) + "）"
+             + (f"，还有 **{unclassified} 笔**没认出来，可以在「流水」页手动改" if unclassified else "")]
+    if not removed.empty:
+        reasons = "、".join(f"{k} {v} 笔" for k, v in removed["reason"].value_counts().items())
+        lines.append(f":material/cleaning_services: **排除**：{reasons}（展开下面的列表可以核对）")
+    partial = int((spend["status"].map(refunded_amount) > 0).sum())
+    if partial:
+        lines.append(f":material/undo: **部分退款**：{partial} 笔已按实际花费扣除")
+    refunds = cross_month_refunds(df)
+    if not refunds.empty:
+        lines.append(f":material/event_repeat: **跨月退款**：{len(refunds)} 笔，抵扣支出 {yuan(-refunds['amount'].sum())}")
+    excluded = int(is_manually_excluded(df).sum())
+    if excluded:
+        lines.append(f":material/block: **手动不计入**：{excluded} 笔（之前标记过，已自动套用）")
+    neutral = int(((df["direction"] == "不计收支") & ~is_manually_excluded(df)).sum())
+    if neutral:
+        lines.append(f":material/swap_horiz: **不计收支**：{neutral} 笔充值、理财、转入余额宝等，不算支出或收入")
+    st.markdown("\n\n".join(lines))
 
 if not removed.empty:
-    reasons = removed["reason"].value_counts()
-    summary = "、".join(f"{k} {v} 笔" for k, v in reasons.items())
-    with st.expander(f"🧹 已自动排除 {len(removed)} 笔：{summary}"):
-        show_table(removed, {"reason": "排除原因"})
+    with st.expander(f"自动排除的 {len(removed)} 笔"):
+        st.dataframe(
+            removed[["time", "amount", "counterparty", "item", "platform", "status", "reason"]]
+            .rename(columns={**COLUMN_LABELS, "reason": "排除原因"}),
+            hide_index=True,
+            column_config={"金额": st.column_config.NumberColumn(format=YUAN_COLUMN_FORMAT),
+                           "时间": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm")},
+            alt="导入时自动排除的交易和原因",
+        )
 
-if st.button("清空数据"):
+st.markdown("下一步：去 **看板** 看钱花在哪，去 **流水** 查看和修改每一笔。")
+if st.button("清空数据", icon=":material/delete:"):
     clear()
     st.rerun()

@@ -34,6 +34,19 @@ def ai_settings() -> dict | None:
     return {"api_key": key, "base_url": base_url, "model": model}
 
 
+def require_data() -> pd.DataFrame:
+    """页面开头调用：有数据就返回交易表；没有就提示去导入、给一个「用示例账单试试」按钮，并停止这一页。"""
+    df = st.session_state.get("transactions")
+    if df is not None and not df.empty:
+        return df
+    st.info("还没有导入数据。在左侧点「导入」上传账单，或者直接用示例账单看看效果。")
+    if st.button("用示例账单试试", icon=":material/science:"):
+        from core.demo import demo_files
+        load_files(demo_files())
+        st.rerun()
+    st.stop()
+
+
 def load_files(files: list[tuple[str, bytes]], use_ai: bool = False) -> list[str]:
     """解析多个账单文件并存进 session_state。返回出错的提示（每个文件一条），没出错就是空列表。"""
     tables, errors = [], []

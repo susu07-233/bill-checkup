@@ -74,7 +74,9 @@ def test_sample_button_loads_demo_data():
     assert not at.exception
     assert len(at.session_state["transactions"]) == len(kept)
     assert len(at.session_state["removed"]) == len(removed)
-    assert at.metric[0].value == f"{len(kept)} 笔"
-    assert at.metric[1].value == f"{totals(kept)['支出']:,.2f} 元"
-    assert all("¥" not in m.value for m in at.metric)       # 不用 ¥，免得被看成日元
-    assert f"已自动排除 {len(removed)} 笔" in at.expander[0].label
+    assert at.subheader[0].value == f"导入了 {len(kept)} 笔交易"
+    assert f"自动排除的 {len(removed)} 笔" in at.expander[0].label
+    report = " ".join(m.value for m in at.markdown)
+    assert "跨月退款" in report and "部分退款" in report and "分类" in report
+    assert "¥" not in report                                 # 不用 ¥，免得被看成日元
+    assert not at.metric                                     # 金额统计在看板，这里不重复
