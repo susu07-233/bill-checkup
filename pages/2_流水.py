@@ -11,7 +11,7 @@ from app_state import change_category, load_files, set_excluded
 from core.money import YUAN_COLUMN_FORMAT, yuan
 from core.clean import totals
 from core.demo import demo_files
-from core.filters import UNCATEGORIZED, filter_transactions, group_key, summarize
+from core.filters import UNCATEGORIZED, filter_transactions, group_key, group_spending, summarize
 from core.overrides import is_manually_excluded
 from core.schema import CATEGORIES, COLUMN_LABELS, DIRECTIONS, PLATFORMS
 
@@ -73,10 +73,13 @@ view = filter_transactions(df, start, end, platforms, directions, categories, ke
 
 # ---------- 汇总 ----------
 t = totals(view)
+food = group_spending(view, "吃喝")
 with st.container(horizontal=True):
     st.metric("筛选出", f"{len(view)} 笔", border=True)
-    st.metric("支出", f"{yuan(t['支出'])}", border=True)
-    st.metric("收入", f"{yuan(t['收入'])}", border=True)
+    st.metric("支出", yuan(t["支出"]), border=True)
+    st.metric("其中吃喝", yuan(food["吃喝"]), border=True,
+              help=f"吃喝 = 餐饮 {yuan(food['餐饮'])} + 零食饮品 {yuan(food['零食饮品'])}")
+    st.metric("收入", yuan(t["收入"]), border=True)
 
 if view.empty:
     if categories:
@@ -94,6 +97,10 @@ mode = st.segmented_control(
 
 if mode in (MODE_MERCHANT, MODE_CATEGORY):
     by, label = ("counterparty", "商家") if mode == MODE_MERCHANT else ("category", "分类")
+    if mode == MODE_CATEGORY and st.toggle("合并成大类（吃喝 = 餐饮 + 零食饮品）", value=True, key="merge_groups"):
+        by, label = "group", "大类"
+        st.caption(f"吃喝 {yuan(food['吃喝'])} = 餐饮 {yuan(food['餐饮'])} + 零食饮品 {yuan(food['零食饮品'])}。"
+                   "关掉开关可以看细分。")
     summary = summarize(view, by).rename(columns={by: label})
     st.dataframe(
         summary,

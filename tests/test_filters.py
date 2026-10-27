@@ -90,3 +90,29 @@ def test_summarize_by_category_separates_income_from_uncategorized(df):
     assert out["笔数"].sum() == len(df)
     assert out.loc[NOT_SPENDING, "支出"] == 0                       # 这一组只有收入和不计收支
     assert out.loc[UNCATEGORIZED, "收入"] == 0                      # 未分类的都是支出
+
+
+# ---------- 大类：吃喝 = 餐饮 + 零食饮品 ----------
+
+def test_to_group():
+    from core.filters import to_group
+    assert to_group("餐饮") == "吃喝" and to_group("零食饮品") == "吃喝"
+    assert to_group("交通") == "交通"
+
+
+def test_summarize_by_group_merges_food_and_snacks():
+    from core.classify import classify
+    from core.filters import group_spending
+    df = classify(pd.concat([parse_bill(n, b) for n, b in demo_files()], ignore_index=True).pipe(lambda d: clean(d)[0]))
+    by_cat = summarize(df, "category").set_index("category")
+    by_group = summarize(df, "group").set_index("group")
+
+    assert "吃喝" in by_group.index and "餐饮" not in by_group.index and "零食饮品" not in by_group.index
+    assert by_group.loc["吃喝", "支出"] == round(by_cat.loc["餐饮", "支出"] + by_cat.loc["零食饮品", "支出"], 2)
+    assert by_group.loc["吃喝", "笔数"] == by_cat.loc["餐饮", "笔数"] + by_cat.loc["零食饮品", "笔数"]
+    assert by_group.loc["交通", "支出"] == by_cat.loc["交通", "支出"]                 # 其他分类不变
+    assert round(by_group["支出"].sum(), 2) == round(by_cat["支出"].sum(), 2)       # 总数不变
+
+    food = group_spending(df, "吃喝")
+    assert food["吃喝"] == by_group.loc["吃喝", "支出"]
+    assert food["餐饮"] == by_cat.loc["餐饮", "支出"] and food["零食饮品"] == by_cat.loc["零食饮品", "支出"]

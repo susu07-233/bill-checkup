@@ -16,6 +16,10 @@ def page_with_demo_data() -> AppTest:
     return at
 
 
+def metric(at: AppTest, label: str) -> str:
+    return next(m.value for m in at.metric if m.label == label)
+
+
 def bulk_set(at: AppTest, keyword: str, category: str):
     """在「明细」里搜索 keyword，把结果批量设为 category。"""
     at.segmented_control(key="flow_mode").set_value("明细").run()
@@ -69,9 +73,30 @@ def test_pick_a_merchant_to_see_its_transactions():
     assert set(detail["交易对方"]) == {"美团"}
 
 
+def test_food_and_drink_total():
+    """苏宇晨的需求（Q12）：一眼看到「吃喝」一共花了多少。"""
+    at = page_with_demo_data()
+    df = at.session_state["transactions"]
+    spend = df[df["direction"] == "支出"]
+    expected = spend.loc[spend["category"].isin(["餐饮", "零食饮品"]), "amount"].sum()
+    assert metric(at, "其中吃喝") == f"{expected:,.2f} 元"
+
+
+def test_category_summary_merges_into_groups_by_default():
+    at = page_with_demo_data()
+    at.segmented_control(key="flow_mode").set_value("按分类汇总").run()
+    table = at.dataframe[0].value
+    assert "吃喝" in set(table["大类"]) and "餐饮" not in set(table["大类"])
+    at.selectbox(key="pick_group").select("吃喝").run()
+    df = at.session_state["transactions"]
+    expected = ((df["direction"] == "支出") & df["category"].isin(["餐饮", "零食饮品"])).sum()
+    assert len(at.dataframe[1].value) == expected
+
+
 def test_pick_a_category_including_income_group():
     at = page_with_demo_data()
     at.segmented_control(key="flow_mode").set_value("按分类汇总").run()
+    at.toggle(key="merge_groups").set_value(False).run()          # 关掉大类，看细分
     df = at.session_state["transactions"]
     at.selectbox(key="pick_category").select("收入 / 不计收支").run()
     assert len(at.dataframe[1].value) == (df["direction"] != "支出").sum()
@@ -92,7 +117,7 @@ def test_clicking_a_direction_shows_only_that_direction():
     at.segmented_control[1].set_value("支出").run()
     df = at.session_state["transactions"]
     assert at.metric[0].value == f"{(df['direction'] == '支出').sum()} 笔"
-    assert at.metric[2].value == "0.00 元"                       # 只看支出，收入为 0
+    assert metric(at, "收入") == "0.00 元"                        # 只看支出，收入为 0
 
 
 def test_category_filter_disabled_when_nothing_is_categorized():

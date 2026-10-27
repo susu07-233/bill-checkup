@@ -4,6 +4,8 @@ from datetime import date
 
 import pandas as pd
 
+from core.schema import CATEGORY_GROUPS
+
 UNCATEGORIZED = "未分类"
 NOT_SPENDING = "收入 / 不计收支"   # 按分类汇总时，非支出记录归到这一组
 SOURCE_MANUAL = "手动"
@@ -45,12 +47,32 @@ def filter_transactions(
     return df[mask]
 
 
+def to_group(category: str) -> str:
+    """分类 → 大类。比如「餐饮」「零食饮品」→「吃喝」；其他分类自己就是一个大类。"""
+    return next((group for group, members in CATEGORY_GROUPS.items() if category in members), category)
+
+
 def group_key(df: pd.DataFrame, by: str) -> pd.Series:
-    """汇总时每笔交易归到哪一组。按分类汇总时：
-    只有支出才分类；收入、不计收支单独成一组，免得被当成「没分出来的支出」。"""
-    if by != "category":
+    """汇总时每笔交易归到哪一组。
+
+    by = "category"（分类）或 "group"（大类）时：只有支出才分类；
+    收入、不计收支单独成一组，免得被当成「没分出来的支出」。
+    """
+    if by not in ("category", "group"):
         return df[by]
-    return df[by].fillna(UNCATEGORIZED).replace("", UNCATEGORIZED).where(df["direction"] == "支出", NOT_SPENDING)
+    key = df["category"].fillna(UNCATEGORIZED).replace("", UNCATEGORIZED)
+    if by == "group":
+        key = key.map(to_group)
+    return key.where(df["direction"] == "支出", NOT_SPENDING)
+
+
+def group_spending(df: pd.DataFrame, group: str) -> dict[str, float]:
+    """某个大类的支出：合计和每个分类各多少。比如 {"吃喝": 1350.0, "餐饮": 954.0, "零食饮品": 396.0}。"""
+    spend = df[df["direction"] == "支出"]
+    result = {group: round(float(spend.loc[spend["category"].isin(CATEGORY_GROUPS[group]), "amount"].sum()), 2)}
+    for category in CATEGORY_GROUPS[group]:
+        result[category] = round(float(spend.loc[spend["category"] == category, "amount"].sum()), 2)
+    return result
 
 
 def summarize(df: pd.DataFrame, by: str) -> pd.DataFrame:
@@ -59,7 +81,7 @@ def summarize(df: pd.DataFrame, by: str) -> pd.DataFrame:
     返回列：by、笔数、支出、收入、支出占比（0–1），按支出从多到少排序。
     「不计收支」的记录只算笔数，不算钱。跨月退款是负数，会抵扣对应项的支出。
     """
-    key = group_key(df, by)
+    key = group_key(df, by).rename(by)
     spend = df["amount"].where(df["direction"] == "支出", 0.0)
     income = df["amount"].where(df["direction"] == "收入", 0.0)
     out = (
