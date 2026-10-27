@@ -64,14 +64,19 @@ with right, st.container(key="receipt"):
         st.caption(whose)
     st.markdown(f"**{answer['title']}**")
     with st.container(key="receipt_total"):
-        st.markdown(f"# {answer['amount']:,.0f} 元" if answer["amount"] >= 100 else f"# {answer['amount']:,.2f} 元")
+        st.markdown(f"# {answer['amount']:,.2f} 元")        # 统一两位小数，和明细能对上
     st.caption(answer["note"])
     if answer["items"]:
         with st.container(key="receipt_items", gap="xsmall"):
+            st.caption(answer["items_label"])               # 比如「支出前三家」：说清楚只列了前几个
             for name, detail in answer["items"]:
                 with st.container(horizontal=True, horizontal_alignment="distribute"):
                     st.markdown(name)
                     st.markdown(f":gray[{detail}]")
+            if answer["rest"]:                              # 没列出来的合成一行，加起来就是上面的总数
+                with st.container(horizontal=True, horizontal_alignment="distribute"):
+                    st.markdown(f":gray[{answer['rest'][0]}]")
+                    st.markdown(f":gray[{answer['rest'][1]}]")
     if len(answer["rows"]):
         if st.button("看看这几笔", icon=":material/north_east:", type="tertiary"):
             show_rows(answer["title"], answer["rows"])

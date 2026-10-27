@@ -7,6 +7,10 @@
   amount    大数字（元）
   note      一句说明，比如「12 笔，每笔平均 13 元」
   items     列表：[(名字, 说明), ...]，最多 3 条
+  items_label  明细的小标题，比如「支出前三家」，说清楚只列了前几个
+  rest      没列出来的部分（名字, 说明），比如（「其他 2 家店」, 「3 笔 · 25.00 元」）；全列出来了就是 None
+            items + rest 加起来等于 amount，方便核对（favorite_shop 例外：大金额是最常去那家，明细是其他店）
+金额统一保留两位小数（苏宇晨 U17：小票显示 173 元、明细合计 172.70 元，对不上）。
   rows      用到的交易（「看看这几笔」时显示）
 """
 
@@ -59,12 +63,14 @@ def milk_tea(df: pd.DataFrame, month: str) -> dict:
     rows = s[hit]
     total, count = float(rows["amount"].sum()), len(rows)
     shops = (rows.assign(shop=rows.apply(_shop_name, axis=1)).groupby("shop")["amount"]
-             .agg(["count", "sum"]).sort_values("sum", ascending=False).head(3))
+             .agg(["count", "sum"]).sort_values("sum", ascending=False))
     return {
         "title": "原来，奶茶是这样攒起来的" if count else "这个月没喝奶茶，真能忍",
         "amount": round(total, 2),
-        "note": f"{count} 笔，每笔平均 {total / count:.0f} 元。" if count else "也许是在别的地方解了馋？",
-        "items": [(shop, f"{int(r['count'])} 笔 · {r['sum']:.0f} 元") for shop, r in shops.iterrows()],
+        "note": f"{count} 笔，每笔平均 {total / count:.2f} 元。" if count else "也许是在别的地方解了馋？",
+        "items": [(shop, f"{int(r['count'])} 笔 · {r['sum']:.2f} 元") for shop, r in shops.head(3).iterrows()],
+        "items_label": "支出前三家" if len(shops) > 3 else "每家店",
+        "rest": _rest(shops.iloc[3:], "家店"),
         "rows": rows,
     }
 
@@ -74,7 +80,8 @@ def favorite_shop(df: pd.DataFrame, month: str) -> dict:
     s = _spend(df, month)
     s = s[~s["category"].isin(PRIVATE_CATEGORIES)]
     if s.empty:
-        return {"title": "这个月还没有消费记录", "amount": 0.0, "note": "", "items": [], "rows": s}
+        return {"title": "这个月还没有消费记录", "amount": 0.0, "note": "", "items": [], "items_label": "",
+                "rest": None, "rows": s}
     visits = s.groupby("counterparty")["amount"].agg(["count", "sum"]).sort_values(["count", "sum"], ascending=False)
     top, r = visits.index[0], visits.iloc[0]
     rows = s[s["counterparty"] == top]
@@ -82,17 +89,27 @@ def favorite_shop(df: pd.DataFrame, month: str) -> dict:
     return {
         "title": f"你最常去的是「{top}」",
         "amount": round(float(r["sum"]), 2),
-        "note": f"去了 {int(r['count'])} 次，平均每次 {r['sum'] / r['count']:.0f} 元。熟悉的小店，也是生活的固定坐标。",
-        "items": [(shop, f"{int(v['count'])} 次 · {v['sum']:.0f} 元") for shop, v in others.iterrows()],
+        "note": f"去了 {int(r['count'])} 次，平均每次 {r['sum'] / r['count']:.2f} 元。熟悉的小店，也是生活的固定坐标。",
+        "items": [(shop, f"{int(v['count'])} 次 · {v['sum']:.2f} 元") for shop, v in others.iterrows()],
+        "items_label": "接下来常去的（按次数）" if len(others) else "",
+        "rest": None,                   # 大金额只算最常去的那家，下面列的是别的店，不用凑合计
         "rows": rows,
     }
+
+
+def _rest(shops: pd.DataFrame, unit: str) -> tuple[str, str] | None:
+    """没列出来的店合在一行：（「其他 2 家店」, 「3 笔 · 25.00 元」）。"""
+    if shops.empty:
+        return None
+    return f"其他 {len(shops)} {unit}", f"{int(shops['count'].sum())} 笔 · {shops['sum'].sum():.2f} 元"
 
 
 def biggest_day(df: pd.DataFrame, month: str) -> dict:
     """这个月花得最多的一天，都花在了哪。"""
     s = _spend(df, month)
     if s.empty:
-        return {"title": "这个月还没有消费记录", "amount": 0.0, "note": "", "items": [], "rows": s}
+        return {"title": "这个月还没有消费记录", "amount": 0.0, "note": "", "items": [], "items_label": "",
+                "rest": None, "rows": s}
     by_day = s.groupby("date")["amount"].sum()
     day = by_day.idxmax()
     rows = s[s["date"] == day].sort_values("amount", ascending=False)
@@ -101,7 +118,9 @@ def biggest_day(df: pd.DataFrame, month: str) -> dict:
         "title": f"{day:%m月%d日}（周{weekday}），花得最多的一天",
         "amount": round(float(by_day.max()), 2),
         "note": f"这一天有 {len(rows)} 笔消费。",
-        "items": [(r.counterparty, f"{r.amount:.0f} 元 · {r.category}") for r in rows.head(3).itertuples()],
+        "items": [(r.counterparty, f"{r.amount:.2f} 元 · {r.category}") for r in rows.head(3).itertuples()],
+        "items_label": "金额最大的三笔" if len(rows) > 3 else "这天的每一笔",
+        "rest": (f"其他 {len(rows) - 3} 笔", f"{rows['amount'].iloc[3:].sum():.2f} 元") if len(rows) > 3 else None,
         "rows": rows,
     }
 

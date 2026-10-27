@@ -81,3 +81,31 @@ def test_delivery_orders_show_the_shop_name():
     row = {"counterparty": "饿了么", "item": "爷爷不泡茶上饶铅山辛弃疾广场店外卖订单"}
     assert _shop_name(row).startswith("爷爷不泡茶")
     assert _shop_name({"counterparty": "古茗", "item": "奶茶"}) == "古茗"
+
+
+def _yuan(text: str) -> float:
+    """从「5 笔 · 105.00 元」这样的说明里取出金额。"""
+    return float(text.split("·")[-1].replace("元", "").replace(",", "").strip().split(" ")[0])
+
+
+def test_receipt_rows_add_up_to_the_total(df):
+    """小票上列出的几行 + 「其他」那一行，加起来要等于大金额（苏宇晨 U17：173 元 vs 172.70 元对不上）。"""
+    for answer in (milk_tea(df, "2026-10"), biggest_day(df, "2026-10")):
+        parts = [_yuan(d) if "笔 ·" in d else float(d.split(" 元")[0].replace(",", "")) for _, d in answer["items"]]
+        if answer["rest"]:
+            parts.append(_yuan(answer["rest"][1]))
+        assert round(sum(parts), 2) == answer["amount"], answer["title"]
+        assert all(".".join(d.split(".")[1:])[:2].isdigit() for _, d in answer["items"])   # 两位小数
+
+
+def test_milk_tea_says_only_top_three_are_listed():
+    rows = pd.DataFrame([
+        {"id": str(i), "time": pd.Timestamp("2026-10-02"), "amount": 10.0 + i, "direction": "支出",
+         "counterparty": shop, "item": "奶茶", "platform": "微信", "pay_method": "零钱", "status": "", "raw_type": "",
+         "category": "零食饮品", "category_source": "规则"}
+        for i, shop in enumerate(["喜茶", "古茗", "蜜雪冰城", "茶百道", "奈雪"])
+    ])
+    a = milk_tea(rows, "2026-10")
+    assert a["items_label"] == "支出前三家" and len(a["items"]) == 3
+    assert a["rest"] == ("其他 2 家店", "2 笔 · 21.00 元")          # 喜茶 10 + 古茗 11（按金额排在最后两家）
+    assert f"{a['amount']:.2f}" == "60.00"
